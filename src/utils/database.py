@@ -1,7 +1,8 @@
 from pymongo import MongoClient
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
 from config.config import MONGODB_URI, MONGODB_DB, MONGODB_COLLECTIONS
+import pymongo
 
 class Database:
     def __init__(self):
@@ -30,13 +31,18 @@ class Database:
         if not self.video_exists(video_data["videoId"]):
             self.collections["videos"].insert_one(video_data)
 
-    def update_keyword_data(self, keyword: str, channels: list, videos: list, count_channels_from_api: int, count_videos_from_api: int) -> None:
+    def update_keyword_data(self, keyword: str, channels: list, videos: list, count_channels_from_api: int, count_videos_from_api: int) -> Dict[str, Any]:
         """Update or insert keyword data."""
+        current_time = datetime.now()
         existing_doc = self.collections["keywords"].find_one({"keyword": keyword})
         
         if existing_doc:
-            existing_channels = existing_doc.get("channels", [])
-            existing_videos = existing_doc.get("videos", [])
+            # Get all existing channels and videos from crawl_history
+            existing_channels = []
+            existing_videos = []
+            for result in existing_doc.get("crawl_history", []):
+                existing_channels.extend(result.get("channels", []))
+                existing_videos.extend(result.get("videos", []))
             
             # Filter out duplicates
             new_channels = [ch for ch in channels if ch["channelId"] not in 
@@ -44,35 +50,136 @@ class Database:
             new_videos = [v for v in videos if v["videoId"] not in 
                          {v["videoId"] for v in existing_videos}]
             
+            # Create crawl result object with new data only
+            crawl_result = {
+                "channels": new_channels,
+                "videos": new_videos,
+                "count_channels": len(new_channels),
+                "count_videos": len(new_videos),
+                "count_channels_from_api": count_channels_from_api,
+                "count_videos_from_api": count_videos_from_api,
+                "crawlDate": current_time
+            }
+            
+            # Get existing crawl results
+            existing_crawl_history = existing_doc.get("crawl_history", [])
+            
+            # Add new crawl result
+            existing_crawl_history.append(crawl_result)
+            
             # Update document
             self.collections["keywords"].update_one(
                 {"keyword": keyword},
                 {
                     "$set": {
-                        "channels": existing_channels + new_channels,
-                        "videos": existing_videos + new_videos,
-                        "count_channels": len(existing_channels + new_channels),
-                        "count_videos": len(existing_videos + new_videos),
-                        "count_channels_from_api": count_channels_from_api,
-                        "count_videos_from_api": count_videos_from_api,
-                        "last_updated": datetime.now(),
+                        "crawl_history": existing_crawl_history,
+                        "last_updated": current_time
                     }
                 }
             )
-        else:
-            # Insert new document
-            self.collections["keywords"].insert_one({
+            
+            # Return the requested information
+            return {
+                "count_channels": len(new_channels),
+                "count_videos": len(new_videos),
+                "count_channels_from_api": count_channels_from_api,
+                "count_videos_from_api": count_videos_from_api,
                 "keyword": keyword,
+                "_id": str(existing_doc["_id"]),
+                "crawlDate": current_time
+            }
+        else:
+            # Create crawl result object with all data for new document
+            crawl_result = {
                 "channels": channels,
                 "videos": videos,
                 "count_channels": len(channels),
                 "count_videos": len(videos),
                 "count_channels_from_api": count_channels_from_api,
                 "count_videos_from_api": count_videos_from_api,
-                "last_updated": datetime.now(),
+                "crawlDate": current_time
+            }
+            
+            # Insert new document
+            result = self.collections["keywords"].insert_one({
+                "keyword": keyword,
+                "crawl_history": [crawl_result],
+                "last_updated": current_time
             })
+            
+            # Return the requested information
+            return {
+                "count_channels": len(channels),
+                "count_videos": len(videos),
+                "count_channels_from_api": count_channels_from_api,
+                "count_videos_from_api": count_videos_from_api,
+                "keyword": keyword,
+                "_id": str(result.inserted_id),
+                "crawlDate": current_time
+            }
 
     def close(self):
         """Close the MongoDB connection."""
-        self.client.close() 
-        self.client.close() 
+        self.client.close()
+
+    def insert_many_videos(self, videos: List[dict]) -> Dict[str, Any]:
+        """Insert multiple videos into database using update_many with upsert.
+        Duplicate videos will be automatically handled by MongoDB.
+        
+        Args:
+            videos (List[dict]): List of video documents to insert
+            
+        Returns:
+            Dict[str, Any]: Dictionary containing count of new/updated videos and list of new video ids
+        """
+        if not videos:
+            return {
+                "new_videos_count": 0,
+                "updated_videos_count": 0,
+                "new_video_ids": []
+            }
+            
+        try:
+            # Create bulk operations
+            operations = []
+            
+            for video in videos:
+                video_id = video.get("videoId")
+                if not video_id:
+                    continue
+                    
+                operations.append(
+                    pymongo.UpdateOne(
+                        {"videoId": video_id},  # Filter by videoId
+                        {"$set": video},        # Update with full document
+                        upsert=True             # Insert if not exists
+                    )
+                )
+            
+            if operations:
+                # Execute bulk write
+                result = self.collections["videos"].bulk_write(operations, ordered=False)
+                print(f"✅ Inserted {result.upserted_count} new videos successfully")
+                print(f"ℹ️ Updated {result.modified_count} existing videos")
+                
+                # Get list of new video ids from upserted_ids
+                new_video_ids = []
+                if result.upserted_ids:
+                    new_video_ids = list(result.upserted_ids.values())
+                
+                return {
+                    "new_videos_count": result.upserted_count,
+                    "updated_videos_count": result.modified_count,
+                    "new_video_ids": new_video_ids
+                }
+            else:
+                print("ℹ️ No videos to process")
+                return {
+                    "new_videos_count": 0,
+                    "updated_videos_count": 0,
+                    "new_video_ids": []
+                }
+                
+        except Exception as e:
+            print(f"❌ Error processing videos: {str(e)}")
+            raise 

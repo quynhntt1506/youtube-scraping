@@ -41,16 +41,21 @@ def download_video_thumbnails(videos: list) -> int:
             
     return count_success
 
-def process_keyword(keyword: str, save_keyword_only: bool = False) -> Dict[str, Any]:
+def crawl_by_keyword(keyword: str, save_keyword_only: bool = False, published_after: str = None, max_results: int = MAX_CHANNELS) -> Dict[str, Any]:
     """Process a single keyword."""
     api = YouTubeAPI()
     db = Database()
     
     try:
-        # Search for channels and videos
-        search_result = api.search(keyword, MAX_CHANNELS)
+        if published_after is not None:
+            search_result = api.search_by_keyword_filter_pulished_date(keyword, published_after, max_results=max_results)
+        else:
+            search_result = api.search_by_keyword(keyword, max_results=max_results)
+        
         channels = search_result["channels"]
         videos = search_result["videos"]
+        api_key = search_result["api_key"]
+        used_quota = search_result["used_quota"]
         
         # Check channels that don't exist in database
         new_channels = []
@@ -59,24 +64,35 @@ def process_keyword(keyword: str, save_keyword_only: bool = False) -> Dict[str, 
             if channel_id and not db.channel_exists(channel_id):
                 new_channels.append(channel)
         
-        # Check and insert videos that don't exist in database
-        new_videos = []
-        for video in videos:
-            video_id = video.get("videoId")
-            if video_id and not db.video_exists(video_id):
-                new_videos.append(video)
-                db.insert_video(video)
+        # Lọc và lưu các video mới
+        # new_videos = []
+        # for video in videos:
+        #     video_id = video.get("videoId")
+        #     if video_id and not db.video_exists(video_id):
+        #         new_videos.append(video)
+        
+        # # Lưu tất cả video mới vào database một lần
+        # if new_videos:
+
+        # lưu các video mới vào database
+        data_saved_db = db.insert_many_videos(videos)
+        new_videos = data_saved_db.get("new_video_ids")
+        
+        # Update keyword data and get the keyword _id
+        crawl_result = db.update_keyword_data(keyword, new_channels, new_videos, len(channels), len(videos))
+        
+        # Add keyword usage history to api_key's used_history array
+        if api_key and crawl_result and "_id" in crawl_result:
+            api.api_manager.add_keyword_id(
+                api_key=api_key,
+                keyword_id=crawl_result["_id"],
+                used_quota=used_quota,
+                crawl_date=crawl_result["crawlDate"]
+            )
         
         if save_keyword_only:
             # Save keyword data to database
-            db.update_keyword_data(keyword, new_channels, new_videos, len(channels), len(videos))
-            return {
-                "keyword": keyword,
-                "count_channels": len(channels),
-                "count_videos": len(videos),
-                "count_new_channels": len(new_channels),
-                "count_new_videos": len(new_videos)
-            }
+            return crawl_result
         else:
             # Get detailed channel information
             channel_ids = [c["channelId"] for c in channels]
@@ -100,6 +116,7 @@ def process_keyword(keyword: str, save_keyword_only: bool = False) -> Dict[str, 
         
     finally:
         db.close()
+    
 
 def main():
     """Main function to process keywords from file."""
@@ -113,7 +130,7 @@ def main():
         
     for keyword in keywords:
         print(f"\nProcessing keyword: {keyword}")
-        result = process_keyword(keyword, save_keyword_only=True)
+        result = crawl_by_keyword(keyword, save_keyword_only=True)
         print(f"Completed: {result}")
 
 if __name__ == "__main__":

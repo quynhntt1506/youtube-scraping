@@ -5,26 +5,29 @@ from datetime import datetime
 import requests
 from pathlib import Path
 from utils.database import Database
-from config.config import API_KEYS_FILE, CHANNEL_IMAGES_DIR, VIDEO_IMAGES_DIR, PROCESSED_DATA_DIR
+from utils.common import convert_to_datetime
+from config.config import CHANNEL_IMAGES_DIR, VIDEO_IMAGES_DIR, PROCESSED_DATA_DIR
 import json
+import os
+from .api_key_manager import APIKeyManager
 
 class YouTubeAPI:
     def __init__(self):
+        self.db = Database()
+        self.api_manager = APIKeyManager(self.db)
         self.api_keys = self._load_api_keys()
         self.current_key_index = 0
         self.youtube = self._build_service()
         self.call_count = 0
 
     def _load_api_keys(self) -> List[str]:
-        """Load API keys from file."""
+        """Load active API keys from database."""
         try:
-            with open(API_KEYS_FILE, "r", encoding="utf-8") as f:
-                return [line.strip() for line in f if line.strip()]
-        except FileNotFoundError:
-            print(f"Error: {API_KEYS_FILE} not found.")
-            return []
+            # Get all active API keys from database
+            active_keys = self.api_manager.get_active_api_keys()
+            return [key["api_key"] for key in active_keys]
         except Exception as e:
-            print(f"Error reading {API_KEYS_FILE}: {e}")
+            print(f"Error loading API keys from database: {e}")
             return []
 
     def _build_service(self) -> Optional[Any]:
@@ -41,25 +44,43 @@ class YouTubeAPI:
 
     def _switch_api_key(self) -> bool:
         """Switch to next API key if available."""
+        # Mark current API key as unactive if quota is 0
+        if self.current_key_index < len(self.api_keys):
+            current_api_key = self.api_keys[self.current_key_index]
+            api_key_doc = self.api_manager.get_api_key_stats(current_api_key)
+            if api_key_doc and api_key_doc["remaining_quota"] <= 0:
+                self.api_manager.update_quota(current_api_key, 0)  # This will set status to unactive
+
+        # Try to get next active API key
         self.current_key_index += 1
         if self.current_key_index >= len(self.api_keys):
-            print("No more API keys available.")
-            return False
+            # Reload active API keys from database
+            self.api_keys = self._load_api_keys()
+            self.current_key_index = 0
+            if not self.api_keys:
+                print("No more active API keys available.")
+                return False
+
         self.youtube = self._build_service()
         return self.youtube is not None
 
-    def search(self, query: str, max_results: int = 100) -> dict:
+    def search_by_keyword(self, query: str, max_results: int = 100) -> dict:
         """Search for channels and videos."""
         channels = []
         videos = []
         next_page_token = None
         all_responses = []
-        database = Database()
+        used_api_key = None
+        used_quota = 0
 
         # Ensure youtube service is initialized
         if not self.youtube:
             if not self._switch_api_key():
-                return {"channels": [], "videos": []}
+                return {"channels": [], "videos": [], "api_key": None, "used_quota": 0}
+
+        # Get current API key
+        if self.current_key_index < len(self.api_keys):
+            used_api_key = self.api_keys[self.current_key_index]
 
         while len(videos) < max_results:
             try:
@@ -76,6 +97,12 @@ class YouTubeAPI:
                 self.call_count += 1
                 response = request.execute()
                 all_responses.append(response)
+                
+                # Update quota usage
+                if self.current_key_index < len(self.api_keys):
+                    # current_api_key = self.api_keys[self.current_key_index]
+                    self.api_manager.update_quota(used_api_key, 100)
+                    used_quota += 100
 
                 for item in response.get("items", []):
                     if item["id"]["kind"] == "youtube#channel":
@@ -83,23 +110,30 @@ class YouTubeAPI:
                             "channelId": item["snippet"]["channelId"],
                             "title": item["snippet"]["title"],
                             "description": item["snippet"]["description"],
-                            "publishedAt": item["snippet"]["publishedAt"],
+                            "publishedAt": convert_to_datetime(item["snippet"]["publishedAt"]),
                         }
-                        channels.append(channel_info)
-
+                        if not any(channel["channelId"] == channel_info["channelId"] for channel in channels):
+                            channels.append(channel_info)
+                            
                     elif item["id"]["kind"] == "youtube#video":
                         video_info = {
                             "videoId": item["id"]["videoId"],
                             "title": item["snippet"]["title"],
                             "description": item["snippet"]["description"],
-                            "publishedAt": item["snippet"]["publishedAt"],
+                            "publishedAt": convert_to_datetime(item["snippet"]["publishedAt"]),
                             "channelId": item["snippet"]["channelId"],
                             "channelTitle": item["snippet"]["channelTitle"],
                             "thumbnailUrl": item["snippet"]["thumbnails"].get("high", {}).get("url", "N/A"),
                             "crawlDate": datetime.now()
                         }
                         videos.append(video_info)
-
+                        # Check if channel exists in channels list
+                        channel_video_info = {
+                            "channelId": video_info["channelId"],
+                            "title": video_info["channelTitle"],
+                        }
+                        if not any(channel["channelId"] == channel_video_info["channelId"] for channel in channels):
+                            channels.append(channel_video_info)
                 next_page_token = response.get("nextPageToken")
                 if not next_page_token:
                     break
@@ -114,7 +148,117 @@ class YouTubeAPI:
         if all_responses:
             self.save_crawl_result(all_responses, query)
             
-        return {"channels": channels, "videos": videos}
+        return {
+            "channels": channels,
+            "videos": videos,
+            "api_key": used_api_key,
+            "used_quota": used_quota
+        }
+
+    def search_by_keyword_filter_pulished_date(self, query: str, published_after: str, max_results: int = 50) -> dict:
+        """
+        Search for videos and channels published after a specified date.
+        
+        Args:
+            query (str): Search query
+            published_after (str): Date in ISO 8601 format (YYYY-MM-DDThh:mm:ss.sZ)
+            max_results (int): Maximum number of results to return (default: 50)
+            
+        Returns:
+            dict: Dictionary containing lists of videos and channels
+        """
+        channels = []
+        videos = []
+        next_page_token = None
+        response_array = []
+        current_date = datetime.now().strftime("%d-%m-%Y")
+        used_api_key = None
+        used_quota = 0
+        
+        # Create file to save response
+        folder_path = os.path.join("result_crawl", current_date)
+        os.makedirs(folder_path, exist_ok=True)
+        result_file_path = os.path.join(folder_path, f"{query}_{published_after}.json")
+        
+        if not self.youtube:
+            if not self._switch_api_key():
+                return {"channels": [], "videos": [], "api_key": None, "used_quota": 0}
+        
+        # Get current API key
+        if self.current_key_index < len(self.api_keys):
+            used_api_key = self.api_keys[self.current_key_index]
+        
+        while len(videos) < max_results:
+            try:
+                request = self.youtube.search().list(
+                    part="snippet",
+                    q=query,
+                    type="video,channel",
+                    maxResults=min(50, max_results - len(videos)),
+                    publishedAfter=published_after,
+                    regionCode="VN",
+                    relevanceLanguage="vi",
+                    pageToken=next_page_token
+                )
+                response = request.execute()
+                response_array.append(response)
+                
+                # Update quota usage
+                if self.current_key_index < len(self.api_keys):
+                    self.api_manager.update_quota(used_api_key, 100)
+                    used_quota += 100
+                
+                for item in response.get("items", []):
+                    if item["id"]["kind"] == "youtube#channel":
+                        channel_info = {
+                            "channelId": item["snippet"]["channelId"],
+                            "title": item["snippet"]["title"],
+                            "description": item["snippet"]["description"],
+                            "publishedAt": convert_to_datetime(item["snippet"]["publishedAt"]),
+                        }
+                        channels.append(channel_info)
+                            
+                    elif item["id"]["kind"] == "youtube#video":
+                        video_info = {
+                            "videoId": item["id"]["videoId"],
+                            "title": item["snippet"]["title"],
+                            "description": item["snippet"]["description"],
+                            "publishedAt": convert_to_datetime(item["snippet"]["publishedAt"]),
+                            "channelId": item["snippet"]["channelId"],
+                            "channelTitle": item["snippet"]["channelTitle"],
+                            "thumbnailUrl": item["snippet"]["thumbnails"].get("high", {}).get("url", "N/A"),
+                        }
+                        videos.append(video_info)
+                            
+                        # Add channel info from video if not already in channels array
+                        channel_info_video = {
+                            "channelId": item["snippet"]["channelId"],
+                            "title": item["snippet"]["channelTitle"],
+                        }
+                        # Check if channelId already exists in channels array
+                        if not any(channel["channelId"] == channel_info_video["channelId"] for channel in channels):
+                            channels.append(channel_info_video)
+                
+                next_page_token = response.get("nextPageToken")
+                if not next_page_token:
+                    break
+                    
+            except googleapiclient.errors.HttpError as e:
+                print(f"API Error searching videos: {e}")
+                if not self._switch_api_key():
+                    break
+                continue
+                
+        # Lưu toàn bộ response_array vào file sau khi hoàn thành
+        with open(result_file_path, "w", encoding="utf-8") as f:
+            json.dump(response_array, f, ensure_ascii=False, indent=4)
+                
+        return {
+            "videos": videos,
+            "channels": channels,
+            "api_key": used_api_key,
+            "used_quota": used_quota
+        }
 
     def get_channel_details(self, channel_ids: List[str]) -> List[dict]:
         """Get detailed information for multiple channels."""
@@ -127,6 +271,11 @@ class YouTubeAPI:
                     id=",".join(batch_ids)
                 )
                 response = request.execute()
+                
+                # Update quota usage
+                if self.current_key_index < len(self.api_keys):
+                    current_api_key = self.api_keys[self.current_key_index]
+                    self.api_manager.update_quota(current_api_key, 1)
                 
                 for item in response.get("items", []):
                     channel_info = self._process_channel_item(item)
@@ -202,7 +351,7 @@ class YouTubeAPI:
         import re
         email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
         emails = re.findall(email_pattern, text)
-        return emails[0] if emails else "" 
+        return emails[0] if emails else ""
     
     def save_crawl_result(self, result: list, keyword: str) -> None:
         """Save crawl results to JSON file."""
@@ -221,3 +370,7 @@ class YouTubeAPI:
         file_path = save_dir / f"{keyword}.json"
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
+
+    def close(self):
+        """Close database connection."""
+        self.db.close()

@@ -11,7 +11,7 @@ CHANNEL_IMAGES_DIR = IMAGES_DIR / "channels"
 VIDEO_IMAGES_DIR = IMAGES_DIR / "videos"
 
 # API Configuration
-MAX_CHANNELS = 10
+MAX_CHANNELS = 1000
 API_KEYS_FILE = BASE_DIR / "apikey.txt"
 
 # MongoDB Configuration
@@ -20,7 +20,8 @@ MONGODB_DB = "youtube_data"
 MONGODB_COLLECTIONS = {
     "channels": "channels",
     "videos": "videos",
-    "keywords": "keywords"
+    "keywords": "keywords",
+    "api_keys": "api_keys"
 }
 
 # Create necessary directories
