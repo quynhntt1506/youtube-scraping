@@ -14,12 +14,12 @@ def generate_and_crawl(num_keywords: int = 100):
     try:
         # Get statistics about available keywords
         stats = generator.get_keyword_stats()
-        print("\nKeyword Categories Statistics:")
+        # print("\nKeyword Categories Statistics:")
         for category, count in stats.items():
             print(f"{category}: {count} keywords")
         
         # Generate keywords
-        print(f"\nGenerating {num_keywords} Vietnamese keywords...")
+        # print(f"\nGenerating {num_keywords} Vietnamese keywords...")
         keywords = generator.generate_keywords(num_keywords)
         
         # Save keywords to keywords.txt for crawling
@@ -27,8 +27,8 @@ def generate_and_crawl(num_keywords: int = 100):
             for keyword in keywords:
                 f.write(f"{keyword}\n")
         
-        print(f"\nGenerated {len(keywords)} unique keywords")
-        print("Starting crawling process...")
+        # print(f"\nGenerated {len(keywords)} unique keywords")
+        # print("Starting crawling process...")
         
         # Start crawling process
         crawl_main()

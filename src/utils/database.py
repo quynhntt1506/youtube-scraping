@@ -261,8 +261,6 @@ class Database:
             if operations:
                 # Execute bulk write
                 result = self.collections["videos"].bulk_write(operations, ordered=False)
-                print(f"✅ Inserted {result.upserted_count} new videos successfully")
-                print(f"ℹ️ Updated {result.modified_count} existing videos")
                 
                 # Get list of new video ids from upserted_ids
                 new_video_ids = []
@@ -275,7 +273,6 @@ class Database:
                     "new_video_ids": new_video_ids
                 }
             else:
-                print("ℹ️ No videos to process")
                 return {
                     "new_videos_count": 0,
                     "updated_videos_count": 0,
@@ -306,7 +303,7 @@ class Database:
             for data in keywords_data:
                 keyword = data.get("keyword")
                 used_quota = data.get("used_quota", 0)
-                crawl_date = data.get("crawl_date")
+                crawl_date = datetime.fromisoformat(data.get("crawl_date", datetime.now()))
                 
                 if not all([keyword, used_quota, crawl_date]):
                     continue
@@ -333,9 +330,17 @@ class Database:
             if operations:
                 # Execute bulk write
                 result = self.collections["api_keys"].bulk_write(operations, ordered=False)
-                print(f"✅ Added {len(operations)} keyword usage records successfully")
-                print(f"ℹ️ Updated {result.modified_count} API key documents")
-                
+                return {
+                    "new_keyword_usage_count": result.upserted_count,
+                    "updated_api_key_count": result.modified_count
+                }
+                # print(f"✅ Added {len(operations)} keyword usage records successfully")
+                # print(f"ℹ️ Updated {result.modified_count} API key documents")
+            else: 
+                return {
+                    "new_keyword_usage_count": 0,
+                    "updated_api_key_count": 0
+                }
         except Exception as e:
             print(f"❌ Error adding keyword usage history: {str(e)}")
             raise

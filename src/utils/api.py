@@ -281,12 +281,12 @@ class YouTubeAPI:
                 # Update quota usage
                 if self.current_key_index < len(self.api_keys):
                     current_api_key = self.api_keys[self.current_key_index]
-                    self.api_manager.update_quota(current_api_key, 1)
-                    used_quota += 1               
+                    
                 for item in response.get("items", []):
                     channel_info = self._process_channel_item(item)
                     detailed_channels.append(channel_info)
-
+                    used_quota += 1
+                    self.api_manager.update_quota(current_api_key, 1)
             except googleapiclient.errors.HttpError as e:
                 print(f"API Error getting channel details: {e}")
                 if not self._switch_api_key():

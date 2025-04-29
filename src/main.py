@@ -6,10 +6,14 @@ from typing import Dict, Any, List
 
 from utils.api import YouTubeAPI
 from utils.database import Database
+from utils.logger import CustomLogger
 from config.config import (
     VIDEO_IMAGES_DIR,
     MAX_CHANNELS
 )
+
+# Initialize logger
+logger = CustomLogger("main")
 
 def download_video_thumbnails(videos: list) -> int:
     """Download thumbnails for videos."""
@@ -23,7 +27,7 @@ def download_video_thumbnails(videos: list) -> int:
         thumbnail_url = video.get("thumbnailUrl")
         
         if not thumbnail_url or not video_id:
-            print(f"❌ Skipping due to missing videoId or thumbnailUrl")
+            logger.warning(f"Skipping due to missing videoId or thumbnailUrl")
             continue
             
         try:
@@ -33,11 +37,11 @@ def download_video_thumbnails(videos: list) -> int:
                 with open(save_path, "wb") as f:
                     f.write(response.content)
                 count_success += 1
-                print(f"✅ Saved: {save_path}")
+                logger.info(f"Saved: {save_path}")
             else:
-                print(f"⚠️ Failed to download image from {thumbnail_url}")
+                logger.warning(f"Failed to download image from {thumbnail_url}")
         except Exception as e:
-            print(f"❌ Error with {video_id}: {str(e)}")
+            logger.error(f"Error with {video_id}: {str(e)}")
             
     return count_success
 
@@ -49,8 +53,12 @@ def crawl_by_keyword(keyword: str, save_keyword_only: bool = False, published_af
     try:
         if published_after is not None:
             search_result = api.search_by_keyword_filter_pulished_date(keyword, published_after, max_results=max_results)
+            logger.info(f"Search keyword filter pulished date by api key {search_result['api_key']} has {search_result['used_quota']} used quota")
+            logger.info(f"Response from api: {len(search_result['channels'])} channels and {len(search_result['videos'])} videos")
         else:
             search_result = api.search_by_keyword(keyword, max_results=max_results)
+            logger.info(f"Search keyword all by api key {search_result['api_key']} has {search_result['used_quota']} used quota")
+            logger.info(f"Response from api: {len(search_result['channels'])} channels and {len(search_result['videos'])} videos")
         
         channels = search_result["channels"]
         videos = search_result["videos"]
@@ -66,8 +74,10 @@ def crawl_by_keyword(keyword: str, save_keyword_only: bool = False, published_af
         
         # Save videos to database
         data_saved_db = db.insert_many_videos(videos)
+        logger.info(f"Inserted {data_saved_db.get('new_videos_count')} new videos successfully")
+        logger.info(f"Updated {data_saved_db.get('updated_videos_count')} existing videos")
+
         new_videos = data_saved_db.get("new_video_ids")
-        
         # Get detailed channel information
         channel_ids = [c["channelId"] for c in channels]
         channel_result = api.get_channel_details(channel_ids)
@@ -77,10 +87,13 @@ def crawl_by_keyword(keyword: str, save_keyword_only: bool = False, published_af
         # Save detailed channels to database
         if detailed_channels:
             channel_result = db.insert_many_channels(detailed_channels)
+            logger.info(f"Inserted {channel_result.get('new_channels_count')} new channels successfully")
+            logger.info(f"Updated {channel_result.get('updated_channels_count')} existing channels")
+
             new_channels = channel_result["new_channel_ids"]
         
-        # Print quota usage information
-        print(f"\nTotal Quota Used: {used_quota} units")
+        # Log quota usage information
+        logger.info(f"Total Quota Used: {used_quota} units")
         
         return {
             "new_videos": new_videos,
@@ -90,20 +103,15 @@ def crawl_by_keyword(keyword: str, save_keyword_only: bool = False, published_af
             "used_quota": used_quota,
             "api_key": api_key
         }
-         #     # Download video thumbnails
-        #     thumbnail_count = download_video_thumbnails(videos)
-    
-
         
     finally:
         db.close()
-    
 
 def main():
     """Main function to process keywords from file."""
     keywords_file = Path("keywords.txt")
     if not keywords_file.exists():
-        print("Error: keywords.txt file not found")
+        logger.error("Error: keywords.txt file not found")
         return
         
     with open(keywords_file, "r", encoding="utf-8") as f:
@@ -113,7 +121,7 @@ def main():
     batch_size = 5
     for i in range(0, len(keywords), batch_size):
         batch_keywords = keywords[i:i+batch_size]
-        print(f"\nProcessing batch of {len(batch_keywords)} keywords...")
+        logger.info(f"Processing batch of {len(batch_keywords)} keywords...")
         
         # Collect results for batch processing
         keywords_data = []
@@ -121,7 +129,7 @@ def main():
         current_api_key = None
         
         for keyword in batch_keywords:
-            print(f"Processing keyword: {keyword}")
+            logger.info(f"Processing keyword: {keyword}")
             result = crawl_by_keyword(keyword, save_keyword_only=True)
             if result:
                 keywords_data.append({
@@ -147,13 +155,17 @@ def main():
             try:
                 # Update keywords
                 results = db.update_many_keywords(keywords_data)
-                print(f"Completed batch: {results}")
+                # logger.info(f"Completed batch: {results}")
                 
                 # Update keyword usage history if we have data
                 if keyword_usage_data and current_api_key:
-                    db.add_many_keyword_usage(current_api_key, keyword_usage_data)
+                    save_keyword_to_apikey_db = db.add_many_keyword_usage(current_api_key, keyword_usage_data)
+                    logger.info(f"Inserted {save_keyword_to_apikey_db.get('new_keyword_usage_count')} keyword usage records successfully")
+                    logger.info(f"Updated {save_keyword_to_apikey_db.get('updated_api_key_count')} API key documents")
             finally:
                 db.close()
 
 if __name__ == "__main__":
     main() 
+
+

@@ -1,5 +1,7 @@
 import logging
 import os
+import sys
+from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
@@ -11,24 +13,29 @@ class CustomLogger:
             name (str): Name of the logger
             log_dir (str): Directory to store log files
         """
-        # Create logs directory if it doesn't exist
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-            
+        self.log_dir = Path(log_dir)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create logger
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.INFO)
         
-        # Create handlers
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        file_handler = logging.FileHandler(f'{log_dir}/{name}_{current_date}.log')
-        console_handler = logging.StreamHandler()
+        # Create formatters
+        file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         
-        # Create formatters and add it to handlers
-        log_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(log_format)
-        console_handler.setFormatter(log_format)
+        # Create file handler
+        log_file = self.log_dir / f"{name}_{datetime.now().strftime('%Y%m%d')}.log"
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(file_formatter)
         
-        # Add handlers to the logger
+        # Create console handler with UTF-8 encoding
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(console_formatter)
+        
+        # Add handlers to logger
         self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
         
@@ -44,7 +51,12 @@ class CustomLogger:
         """
         if api_key:
             self._update_api_key_status(api_key, "info", message)
-        self.logger.info(message)
+        try:
+            self.logger.info(message)
+        except UnicodeEncodeError:
+            # If there's an encoding error, try to encode the message
+            encoded_message = message.encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.info(encoded_message)
     
     def error(self, message: str, api_key: Optional[str] = None):
         """Log error message.
@@ -55,7 +67,11 @@ class CustomLogger:
         """
         if api_key:
             self._update_api_key_status(api_key, "error", message)
-        self.logger.error(message)
+        try:
+            self.logger.error(message)
+        except UnicodeEncodeError:
+            encoded_message = message.encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.error(encoded_message)
     
     def warning(self, message: str, api_key: Optional[str] = None):
         """Log warning message.
@@ -66,7 +82,11 @@ class CustomLogger:
         """
         if api_key:
             self._update_api_key_status(api_key, "warning", message)
-        self.logger.warning(message)
+        try:
+            self.logger.warning(message)
+        except UnicodeEncodeError:
+            encoded_message = message.encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.warning(encoded_message)
     
     def _update_api_key_status(self, api_key: str, status_type: str, message: str):
         """Update API key status tracking.
