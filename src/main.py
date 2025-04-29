@@ -2,7 +2,7 @@ import json
 import requests
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from utils.api import YouTubeAPI
 from utils.database import Database
@@ -64,55 +64,36 @@ def crawl_by_keyword(keyword: str, save_keyword_only: bool = False, published_af
             if channel_id and not db.channel_exists(channel_id):
                 new_channels.append(channel)
         
-        # Lọc và lưu các video mới
-        # new_videos = []
-        # for video in videos:
-        #     video_id = video.get("videoId")
-        #     if video_id and not db.video_exists(video_id):
-        #         new_videos.append(video)
-        
-        # # Lưu tất cả video mới vào database một lần
-        # if new_videos:
-
-        # lưu các video mới vào database
+        # Save videos to database
         data_saved_db = db.insert_many_videos(videos)
         new_videos = data_saved_db.get("new_video_ids")
         
-        # Update keyword data and get the keyword _id
-        crawl_result = db.update_keyword_data(keyword, new_channels, new_videos, len(channels), len(videos))
+        # Get detailed channel information
+        channel_ids = [c["channelId"] for c in channels]
+        channel_result = api.get_channel_details(channel_ids)
+        detailed_channels = channel_result["detailed_channels"]
+        used_quota += channel_result["used_quota"]
         
-        # Add keyword usage history to api_key's used_history array
-        if api_key and crawl_result and "_id" in crawl_result:
-            api.api_manager.add_keyword_id(
-                api_key=api_key,
-                keyword_id=crawl_result["_id"],
-                used_quota=used_quota,
-                crawl_date=crawl_result["crawlDate"]
-            )
+        # Save detailed channels to database
+        if detailed_channels:
+            channel_result = db.insert_many_channels(detailed_channels)
+            new_channels = channel_result["new_channel_ids"]
         
-        if save_keyword_only:
-            # Save keyword data to database
-            return crawl_result
-        else:
-            # Get detailed channel information
-            channel_ids = [c["channelId"] for c in channels]
-            detailed_channels = api.get_channel_details(channel_ids)
-            
-            # Download video thumbnails
-            thumbnail_count = download_video_thumbnails(videos)
+        # Print quota usage information
+        print(f"\nTotal Quota Used: {used_quota} units")
         
-            # Save results
-            result = {
-                "keyword": keyword,
-                "count_channels": len(detailed_channels),
-                "count_videos": len(videos),
-                "count_new_channels": len(new_channels),
-                "count_new_videos": len(new_videos),
-                "count_thumbnails": thumbnail_count,
-                "channels": detailed_channels,
-                "videos": videos
-            }
-            return result
+        return {
+            "new_videos": new_videos,
+            "new_channels": new_channels,
+            "count_channels_from_api": len(channels),
+            "count_videos_from_api": len(videos),
+            "used_quota": used_quota,
+            "api_key": api_key
+        }
+         #     # Download video thumbnails
+        #     thumbnail_count = download_video_thumbnails(videos)
+    
+
         
     finally:
         db.close()
@@ -128,10 +109,51 @@ def main():
     with open(keywords_file, "r", encoding="utf-8") as f:
         keywords = [line.strip() for line in f if line.strip()]
         
-    for keyword in keywords:
-        print(f"\nProcessing keyword: {keyword}")
-        result = crawl_by_keyword(keyword, save_keyword_only=True)
-        print(f"Completed: {result}")
+    # Process keywords in batches of 5
+    batch_size = 5
+    for i in range(0, len(keywords), batch_size):
+        batch_keywords = keywords[i:i+batch_size]
+        print(f"\nProcessing batch of {len(batch_keywords)} keywords...")
+        
+        # Collect results for batch processing
+        keywords_data = []
+        keyword_usage_data = []
+        current_api_key = None
+        
+        for keyword in batch_keywords:
+            print(f"Processing keyword: {keyword}")
+            result = crawl_by_keyword(keyword, save_keyword_only=True)
+            if result:
+                keywords_data.append({
+                    "keyword": keyword,
+                    "channels": result.get("new_channels", []),
+                    "videos": result.get("new_videos", []),
+                    "count_channels_from_api": result.get("count_channels_from_api", 0),
+                    "count_videos_from_api": result.get("count_videos_from_api", 0)
+                })
+                
+                # Collect keyword usage data
+                if result.get("used_quota"):
+                    keyword_usage_data.append({
+                        "keyword": keyword,
+                        "used_quota": result["used_quota"],
+                        "crawl_date": result.get("crawlDate", datetime.now()).isoformat()
+                    })
+                    current_api_key = result.get("api_key")
+        
+        # Update all keywords in batch
+        if keywords_data:
+            db = Database()
+            try:
+                # Update keywords
+                results = db.update_many_keywords(keywords_data)
+                print(f"Completed batch: {results}")
+                
+                # Update keyword usage history if we have data
+                if keyword_usage_data and current_api_key:
+                    db.add_many_keyword_usage(current_api_key, keyword_usage_data)
+            finally:
+                db.close()
 
 if __name__ == "__main__":
     main() 

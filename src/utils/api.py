@@ -1,6 +1,6 @@
 import googleapiclient.discovery
 import googleapiclient.errors
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from datetime import datetime
 import requests
 from pathlib import Path
@@ -260,9 +260,15 @@ class YouTubeAPI:
             "used_quota": used_quota
         }
 
-    def get_channel_details(self, channel_ids: List[str]) -> List[dict]:
-        """Get detailed information for multiple channels."""
+    def get_channel_details(self, channel_ids: List[str]) -> Dict[str, Any]:
+        """Get detailed information for multiple channels.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing detailed channels and quota usage
+        """
         detailed_channels = []
+        used_quota = 0
+        
         for i in range(0, len(channel_ids), 50):
             batch_ids = channel_ids[i:i+50]
             try:
@@ -276,7 +282,7 @@ class YouTubeAPI:
                 if self.current_key_index < len(self.api_keys):
                     current_api_key = self.api_keys[self.current_key_index]
                     self.api_manager.update_quota(current_api_key, 1)
-                
+                    used_quota += 1               
                 for item in response.get("items", []):
                     channel_info = self._process_channel_item(item)
                     detailed_channels.append(channel_info)
@@ -287,26 +293,29 @@ class YouTubeAPI:
                     break
                 continue
 
-        return detailed_channels
+        return {
+            "detailed_channels": detailed_channels,
+            "used_quota": used_quota
+        }
 
     def _process_channel_item(self, item: dict) -> dict:
         """Process a single channel item from the API response."""
         channel_id = item["id"]
         today_str = datetime.now().strftime('%d-%m-%Y')
         
-        # Download and save avatar
+        # # Download and save avatar
         avatar_url = item["snippet"]["thumbnails"].get("default", {}).get("url", "")
-        avatar_path = self._download_image(
-            avatar_url, 
-            CHANNEL_IMAGES_DIR / today_str / f"{channel_id}_avatar.jpg"
-        )
+        # avatar_path = self._download_image(
+        #     avatar_url, 
+        #     CHANNEL_IMAGES_DIR / today_str / f"{channel_id}_avatar.jpg"
+        # )
 
-        # Download and save banner
+        # # Download and save banner
         banner_url = item["brandingSettings"].get("image", {}).get("bannerExternalUrl", "")
-        banner_path = self._download_image(
-            banner_url,
-            CHANNEL_IMAGES_DIR / today_str / f"{channel_id}_banner.jpg"
-        )
+        # banner_path = self._download_image(
+        #     banner_url,
+        #     CHANNEL_IMAGES_DIR / today_str / f"{channel_id}_banner.jpg"
+        # )
 
         return {
             "channelId": channel_id,
@@ -320,9 +329,7 @@ class YouTubeAPI:
             "topics": ",".join(item["topicDetails"].get("topicIds", []) if item.get("topicDetails") else []),
             "email": self._extract_email(item["snippet"]["description"]),
             "avatarUrl": avatar_url,
-            "avatarFile": str(avatar_path) if avatar_path else "",
             "bannerUrl": banner_url,
-            "bannerFile": str(banner_path) if banner_path else "",
             "crawlDate": datetime.now()
         }
 
