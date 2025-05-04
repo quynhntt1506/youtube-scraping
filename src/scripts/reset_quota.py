@@ -8,6 +8,10 @@ from pathlib import Path
 # Add parent directory to path to import utils
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.database import Database
+from utils.logger import Logger
+
+# Initialize logger
+logger = CustomLogger("quota_reset")
 
 def reset_quota():
     """Reset quota of all API keys to 10000 at 00:00 PT time daily."""
@@ -30,11 +34,11 @@ def reset_quota():
         
         # Get current time in PT
         pt_time = datetime.now(pytz.timezone('US/Pacific'))
-        print(f"✅ Reset quota completed at {pt_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-        print(f"✅ Updated {result.modified_count} API keys")
+        logger.info(f"Reset quota completed at {pt_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        logger.info(f"Updated {result.modified_count} API keys")
         
     except Exception as e:
-        print(f"❌ Error resetting quota: {str(e)}")
+        logger.error(f"Error resetting quota: {str(e)}")
     finally:
         db.close()
 
@@ -45,8 +49,8 @@ def main():
     # Schedule the job to run at 00:00 PT time every day
     schedule.every().day.at("00:00").do(reset_quota).timezone = pt
     
-    print("🔄 Quota reset scheduler started. Will reset at 00:00 PT time daily.")
-    print(f"Current PT time: {datetime.now(pt).strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    logger.info("Quota reset scheduler started. Will reset at 00:00 PT time daily.")
+    logger.info(f"Current PT time: {datetime.now(pt).strftime('%Y-%m-%d %H:%M:%S %Z')}")
     
     # Run the scheduler
     while True:

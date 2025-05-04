@@ -64,7 +64,7 @@ class YouTubeAPI:
         self.youtube = self._build_service()
         return self.youtube is not None
 
-    def search_by_keyword(self, query: str, max_results: int = 100) -> dict:
+    def search_channel_by_keyword(self, query: str, max_results: int = 100) -> dict:
         """Search for channels and videos."""
         channels = []
         videos = []
@@ -82,7 +82,88 @@ class YouTubeAPI:
         if self.current_key_index < len(self.api_keys):
             used_api_key = self.api_keys[self.current_key_index]
 
-        while len(videos) < max_results:
+        while len(channels) < max_results:
+            try:
+                request = self.youtube.search().list(
+                    part="snippet",
+                    type="channel",
+                    q=query,
+                    maxResults=50,
+                    regionCode="VN",
+                    relevanceLanguage="vi",
+                    pageToken=next_page_token
+                )
+                
+                self.call_count += 1
+                response = request.execute()
+                all_responses.append(response)
+                
+                # Update quota usage
+                if self.current_key_index < len(self.api_keys):
+                    self.api_manager.update_quota(used_api_key, 100)
+                    used_quota += 100
+
+                for item in response.get("items", []):
+                    if item["id"]["kind"] == "youtube#channel":
+                        channel_info = {
+                            "channelId": item["snippet"]["channelId"],
+                            "title": item["snippet"]["title"],
+                            "description": item["snippet"]["description"],
+                            "publishedAt": convert_to_datetime(item["snippet"]["publishedAt"]),
+                        }
+                        if not any(channel["channelId"] == channel_info["channelId"] for channel in channels):
+                            channels.append(channel_info)
+
+                next_page_token = response.get("nextPageToken")
+                if not next_page_token:
+                    break
+
+            except googleapiclient.errors.HttpError as e:
+                error_details = e.error_details[0]
+                if error_details.get("reason") == "quotaExceeded":
+                    print(f"API key quota exceeded. Switching to next key...")
+                    if not self._switch_api_key():
+                        print("No more API keys available. Stopping search.")
+                        break
+                    # Update used_api_key after switching
+                    if self.current_key_index < len(self.api_keys):
+                        used_api_key = self.api_keys[self.current_key_index]
+                    # Continue with the same next_page_token to get remaining results
+                    continue
+                else:
+                    print(f"API Error: {e}")
+                    continue
+
+        # Save all responses to file
+        if all_responses:
+            self.save_crawl_result(all_responses, query)
+            
+        return {
+            "channels": channels,
+            "videos": videos,
+            "api_key": used_api_key,
+            "used_quota": used_quota
+        }
+
+    def search_channel_and_video_by_keyword(self, query: str, max_results: int = 100) -> dict:
+        """Search for channels and videos."""
+        channels = []
+        videos = []
+        next_page_token = None
+        all_responses = []
+        used_api_key = None
+        used_quota = 0
+
+        # Ensure youtube service is initialized
+        if not self.youtube:
+            if not self._switch_api_key():
+                return {"channels": [], "videos": [], "api_key": None, "used_quota": 0}
+
+        # Get current API key
+        if self.current_key_index < len(self.api_keys):
+            used_api_key = self.api_keys[self.current_key_index]
+
+        while len(channels) < max_results:
             try:
                 request = self.youtube.search().list(
                     part="snippet",
@@ -155,7 +236,7 @@ class YouTubeAPI:
             "used_quota": used_quota
         }
 
-    def search_by_keyword_filter_pulished_date(self, query: str, published_after: str, max_results: int = 50) -> dict:
+    def search_video_by_keyword_filter_pulished_date(self, query: str, published_after: str, max_results: int = 50) -> dict:
         """
         Search for videos and channels published after a specified date.
         
@@ -193,7 +274,7 @@ class YouTubeAPI:
                 request = self.youtube.search().list(
                     part="snippet",
                     q=query,
-                    type="video,channel",
+                    type="video",
                     maxResults=min(50, max_results - len(videos)),
                     publishedAfter=published_after,
                     regionCode="VN",
@@ -273,7 +354,7 @@ class YouTubeAPI:
             batch_ids = channel_ids[i:i+50]
             try:
                 request = self.youtube.channels().list(
-                    part="snippet,statistics,topicDetails,brandingSettings",
+                    part="snippet,statistics,topicDetails,brandingSettings,contentDetails",
                     id=",".join(batch_ids)
                 )
                 response = request.execute()
@@ -317,6 +398,7 @@ class YouTubeAPI:
         #     CHANNEL_IMAGES_DIR / today_str / f"{channel_id}_banner.jpg"
         # )
 
+        playlist_id = item["contentDetails"].get("relatedPlaylists", {}).get("uploads", "")
         return {
             "channelId": channel_id,
             "title": item["snippet"]["title"],
@@ -330,6 +412,7 @@ class YouTubeAPI:
             "email": self._extract_email(item["snippet"]["description"]),
             "avatarUrl": avatar_url,
             "bannerUrl": banner_url,
+            "playlistId": playlist_id,
             "crawlDate": datetime.now()
         }
 
@@ -381,3 +464,79 @@ class YouTubeAPI:
     def close(self):
         """Close database connection."""
         self.db.close()
+
+    def get_channels_playlist_videos(self, detailed_channels: List[dict], max_results_per_playlist: int = 50) -> Dict[str, Any]:
+        """
+        Get videos from uploads playlists of multiple channels.
+        
+        Args:
+            detailed_channels (List[dict]): List of channel details containing playlistId
+            max_results_per_playlist (int): Maximum number of videos to return per playlist (default: 50)
+            
+        Returns:
+            Dict[str, Any]: Dictionary containing videos and quota usage
+        """
+        all_videos = []
+        used_quota = 0
+        
+        for channel in detailed_channels:
+            playlist_id = channel.get("playlistId")
+            if not playlist_id:
+                continue
+                
+            videos = []
+            next_page_token = None
+            
+            try:
+                while len(videos) < max_results_per_playlist:
+                    try:
+                        request = self.youtube.playlistItems().list(
+                            part="snippet,contentDetails",
+                            playlistId=playlist_id,
+                            maxResults=min(50, max_results_per_playlist - len(videos)),
+                            pageToken=next_page_token
+                        )
+                        
+                        response = request.execute()
+                        used_quota += 1
+                        
+                        for item in response.get("items", []):
+                            video_info = {
+                                "videoId": item["contentDetails"]["videoId"],
+                                "title": item["snippet"]["title"],
+                                "description": item["snippet"]["description"],
+                                "publishedAt": convert_to_datetime(item["snippet"]["publishedAt"]),
+                                "channelId": item["snippet"]["channelId"],
+                                "channelTitle": item["snippet"]["channelTitle"],
+                                "thumbnailUrl": item["snippet"]["thumbnails"].get("high", {}).get("url", "N/A"),
+                                "position": item["snippet"]["position"],
+                                "playlistId": playlist_id,
+                                "crawlDate": datetime.now()
+                            }
+                            videos.append(video_info)
+                        
+                        next_page_token = response.get("nextPageToken")
+                        if not next_page_token:
+                            break
+                            
+                    except googleapiclient.errors.HttpError as e:
+                        error_details = e.error_details[0]
+                        if error_details.get("reason") == "playlistNotFound":
+                            print(f"Uploads playlist not found for channel {playlist_id}. Skipping...")
+                            break
+                        else:
+                            print(f"API Error getting playlist items for channel {playlist_id}: {e}")
+                            if not self._switch_api_key():
+                                break
+                            continue
+                        
+            except Exception as e:
+                print(f"Error getting videos for channel {playlist_id}: {e}")
+                continue
+                
+            all_videos.extend(videos)
+            
+        return {
+            "videos": all_videos,
+            "used_quota": used_quota
+        }

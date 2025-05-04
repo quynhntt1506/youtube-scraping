@@ -11,7 +11,7 @@ CHANNEL_IMAGES_DIR = IMAGES_DIR / "channels"
 VIDEO_IMAGES_DIR = IMAGES_DIR / "videos"
 
 # API Configuration
-MAX_CHANNELS = 100
+MAX_CHANNELS = 500
 API_KEYS_FILE = BASE_DIR / "apikey.txt"
 
 # MongoDB Configuration

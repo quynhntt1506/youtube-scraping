@@ -12,7 +12,7 @@ if not os.path.exists(IMAGE_DIR_VIDEO):
 
 # MongoDB setup
 client = MongoClient("mongodb://localhost:27017/")
-db = client["youtube_data"]
+db = client["youtube_crawl"]
 videos_collection = db["videos"]
 
 def download_and_save_thumbnail(video: Dict[str, Any]) -> None:

@@ -7,10 +7,10 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.database import Database
-from utils.logger import Logger
+from utils.logger import CustomLogger
 
 # Initialize logger
-logger = Logger("save_quota")
+logger = CustomLogger("save_quota")
 
 def add_api_keys(api_keys_data: List[Dict[str, Any]]) -> None:
     """
@@ -85,22 +85,22 @@ if __name__ == "__main__":
         {
             "email": "quynhntt150602@gmail.com",
             "api_key": "AIzaSyCzereW1kHUnGvUDRKxAVkrbIYXhCLum4w",
-            "quota": 0
+            "quota": 10000
         },
         {
             "email": "20020117@vnu.edu.vn",
             "api_key": "AIzaSyDaYvVHnU50j_Ug4iCDzvUD500R2ylbz6c",
-            "quota": 0
+            "quota": 10000
         },
         {
             "email": "trantrunghieu0201@gmail.com",
             "api_key": "AIzaSyDaqCjg4PQJzyeHDClF1dx4rqCJNvmXo0c",
-            "quota": 0
+            "quota": 10000
         },
         {
             "email": "hoaian150602@gmail.com",
             "api_key": "AIzaSyCvpZQH3puwKemg72N4BM3NsR8lJ82Al_o",
-            "quota": 1125
+            "quota": 10000
         },
         {
             "email": "hieuaccess0201@gmail.com",
@@ -123,5 +123,6 @@ if __name__ == "__main__":
             "quota": 10000
         }
     ]
-    
+    logger.info("Start adding API keys to database")
     add_api_keys(api_keys_to_add) 
+    logger.info("Finish adding API keys to database")

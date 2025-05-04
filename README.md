@@ -56,8 +56,14 @@ pip install -e .
 Run the main script:
 ```bash
 python src/main.py
+python src/generate_keywords.py --num-keywords=5
 ```
 
+Run script get apikey
+```bash
+python src/scripts/save_quota.py
+python src/scripts/reset_quota.py
+```
 The script will:
 1. Read keywords from `keywords.txt`
 2. Search for channels and videos for each keyword

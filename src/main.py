@@ -45,18 +45,18 @@ def download_video_thumbnails(videos: list) -> int:
             
     return count_success
 
-def crawl_by_keyword(keyword: str, save_keyword_only: bool = False, published_after: str = None, max_results: int = MAX_CHANNELS) -> Dict[str, Any]:
+def crawl_video_in_channel_by_keyword(keyword: str, save_keyword_only: bool = False, published_after: str = None, max_results: int = MAX_CHANNELS) -> Dict[str, Any]:
     """Process a single keyword."""
     api = YouTubeAPI()
     db = Database()
     
     try:
         if published_after is not None:
-            search_result = api.search_by_keyword_filter_pulished_date(keyword, published_after, max_results=max_results)
+            search_result = api.search_video_by_keyword_filter_pulished_date(keyword, published_after, max_results=max_results)
             logger.info(f"Search keyword filter pulished date by api key {search_result['api_key']} has {search_result['used_quota']} used quota")
             logger.info(f"Response from api: {len(search_result['channels'])} channels and {len(search_result['videos'])} videos")
         else:
-            search_result = api.search_by_keyword(keyword, max_results=max_results)
+            search_result = api.search_channel_by_keyword(keyword, max_results=max_results)
             logger.info(f"Search keyword all by api key {search_result['api_key']} has {search_result['used_quota']} used quota")
             logger.info(f"Response from api: {len(search_result['channels'])} channels and {len(search_result['videos'])} videos")
         
@@ -72,14 +72,8 @@ def crawl_by_keyword(keyword: str, save_keyword_only: bool = False, published_af
             if channel_id and not db.channel_exists(channel_id):
                 new_channels.append(channel)
         
-        # Save videos to database
-        data_saved_db = db.insert_many_videos(videos)
-        logger.info(f"Inserted {data_saved_db.get('new_videos_count')} new videos successfully")
-        logger.info(f"Updated {data_saved_db.get('updated_videos_count')} existing videos")
-
-        new_videos = data_saved_db.get("new_video_ids")
         # Get detailed channel information
-        channel_ids = [c["channelId"] for c in channels]
+        channel_ids = [c["channelId"] for c in new_channels]
         channel_result = api.get_channel_details(channel_ids)
         detailed_channels = channel_result["detailed_channels"]
         used_quota += channel_result["used_quota"]
@@ -90,14 +84,29 @@ def crawl_by_keyword(keyword: str, save_keyword_only: bool = False, published_af
             logger.info(f"Inserted {channel_result.get('new_channels_count')} new channels successfully")
             logger.info(f"Updated {channel_result.get('updated_channels_count')} existing channels")
 
-            new_channels = channel_result["new_channel_ids"]
+            new_channels_ids = channel_result["new_channel_ids"]
         
+        # Get videos from channels' uploads playlists
+        playlist_result = api.get_channels_playlist_videos(detailed_channels)
+        playlist_videos = playlist_result["videos"]
+        videos = videos + playlist_videos
+        used_quota += playlist_result["used_quota"]
+        logger.info(f"After crawl playlist, Inserted {len(playlist_videos)} new videos successfully from playlist of channels")
+        logger.info(f"After crawl playlist, used quota: {playlist_result["used_quota"]}")
+
+        # Save videos to database
+        data_saved_db = db.insert_many_videos(videos)
+        logger.info(f"Inserted {data_saved_db.get('new_videos_count')} new videos successfully")
+        logger.info(f"Updated {data_saved_db.get('updated_videos_count')} existing videos")
+
+        new_videos_ids = data_saved_db.get("new_video_ids")
+
         # Log quota usage information
         logger.info(f"Total Quota Used: {used_quota} units")
         
         return {
-            "new_videos": new_videos,
-            "new_channels": new_channels,
+            "new_videos": new_videos_ids,
+            "new_channels": new_channels_ids,
             "count_channels_from_api": len(channels),
             "count_videos_from_api": len(videos),
             "used_quota": used_quota,
@@ -107,7 +116,7 @@ def crawl_by_keyword(keyword: str, save_keyword_only: bool = False, published_af
     finally:
         db.close()
 
-def main():
+def crawl_video_in_channel_by_keyword_from_file():
     """Main function to process keywords from file."""
     keywords_file = Path("keywords.txt")
     if not keywords_file.exists():
@@ -130,7 +139,7 @@ def main():
         
         for keyword in batch_keywords:
             logger.info(f"Processing keyword: {keyword}")
-            result = crawl_by_keyword(keyword, save_keyword_only=True)
+            result = crawl_video_in_channel_by_keyword(keyword, save_keyword_only=True)
             if result:
                 keywords_data.append({
                     "keyword": keyword,
@@ -166,6 +175,6 @@ def main():
                 db.close()
 
 if __name__ == "__main__":
-    main() 
+    crawl_video_in_channel_by_keyword_from_file() 
 
 

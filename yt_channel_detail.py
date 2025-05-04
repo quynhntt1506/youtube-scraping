@@ -57,7 +57,7 @@ def get_channels_and_videos_by_query(query, max_results=MAX_CHANNELS):
     while len(videos) < max_results:
         request = youtube.search().list(
             part="snippet",
-            type="video,channel", 
+            type="channel", 
             q=query,
             maxResults=50,
             regionCode="VN",
