@@ -9,8 +9,8 @@ class Database:
         self.client = MongoClient(MONGODB_URI)
         self.db = self.client[MONGODB_DB]
         self.collections = {
-            name: self.db[collection_name]
-            for name, collection_name in MONGODB_COLLECTIONS.items()
+            name: self.db[collection]
+            for name, collection in MONGODB_COLLECTIONS.items()
         }
 
     def channel_exists(self, channel_id: str) -> bool:
@@ -164,8 +164,6 @@ class Database:
                     
                 # Create crawl result object
                 crawl_result = {
-                    "channels": channels,
-                    "videos": videos,
                     "count_channels": len(channels),
                     "count_videos": len(videos),
                     "count_channels_from_api": count_channels_from_api,
@@ -202,26 +200,31 @@ class Database:
             if operations:
                 # Execute bulk write
                 result = self.collections["keywords"].bulk_write(operations, ordered=False)
-                print(f"✅ Processed {len(operations)} keywords successfully")
-                print(f"ℹ️ Inserted {result.upserted_count} new keywords")
-                print(f"ℹ️ Updated {result.modified_count} existing keywords")
                 
                 # Get inserted ids and update results
                 if result.upserted_ids:
                     for idx, doc_id in result.upserted_ids.items():
                         results[idx]["_id"] = str(doc_id)
                 
-                return results
+                return {
+                    "count_operations": len(operations),
+                    "new_keywords_count": result.upserted_count,
+                    "updated_keywords_count": result.modified_count,
+                }
             else:
                 print("ℹ️ No keywords to process")
-                return []
+                return {
+                    "count_operations": 0,
+                    "new_keywords_count": 0,
+                    "updated_keywords_count": 0,
+                }
                 
         except Exception as e:
             print(f"❌ Error processing keywords: {str(e)}")
             raise
 
     def close(self):
-        """Close the MongoDB connection."""
+        """Close MongoDB connection."""
         self.client.close()
 
     def insert_many_videos(self, videos: List[dict]) -> Dict[str, Any]:
@@ -405,4 +408,40 @@ class Database:
                 
         except Exception as e:
             print(f"❌ Error processing channels: {str(e)}")
-            raise 
+            raise
+
+    def get_keyword_by_keyword(self, keyword: str) -> Dict[str, Any]:
+        """Get keyword document from keyword_generation collection.
+        
+        Args:
+            keyword (str): Keyword to find
+            
+        Returns:
+            Dict[str, Any]: Keyword document if found, None otherwise
+        """
+        return self.collections["keyword_generation"].find_one({"keyword": keyword})
+
+    def update_keyword_status(self, keyword: str, status: str) -> bool:
+        """Update status of a keyword in keyword_generation collection.
+        
+        Args:
+            keyword (str): Keyword to update
+            status (str): New status ("to crawl", "crawling", "crawled")
+            
+        Returns:
+            bool: True if update successful, False otherwise
+        """
+        if status not in ["to crawl", "crawling", "crawled"]:
+            return False
+        
+        result = self.collections["keyword_generation"].update_one(
+            {"keyword": keyword},
+            {
+                "$set": {
+                    "status": status,
+                    "updated_at": datetime.now()
+                }
+            }
+        )
+        
+        return result.modified_count > 0 

@@ -39,7 +39,7 @@ class KeywordGenerator:
             "nam", "nữ", "trẻ em", "người lớn", "người già",
             "thanh niên", "người lớn tuổi", "thiếu niên", "trẻ nhỏ", "cao tuổi",
             "học sinh", "sinh viên", "người đi làm", "người trẻ", "người trưởng thành",
-            "bé trai", "bé gái", "thanh niên", "người trung niên", "người cao tuổi"
+            "bé trai", "bé gái", "thanh niên", "người trung niên", "người cao tuổi", "gen z"
         ]
         
         # Keywords for emotions and expressions
@@ -55,7 +55,7 @@ class KeywordGenerator:
             "studio", "ngoài trời", "trong nhà", "tự nhiên", "nhân tạo",
             "ánh sáng", "bóng tối", "phông nền", "không gian", "cảnh",
             "phố", "công viên", "quán cà phê", "trung tâm thương mại", "bãi biển",
-            "núi", "rừng", "sông", "hồ", "thành phố"
+            "núi", "rừng", "sông", "hồ", "thành phố", "công sở"
         ]
         
         # Keywords for quality and style
@@ -72,26 +72,26 @@ class KeywordGenerator:
             "nhảy", "chạy", "đi bộ", "đọc", "viết",
             "vẽ", "chụp ảnh", "quay phim", "biểu diễn", "trình diễn",
             "thuyết trình", "phỏng vấn", "review", "hướng dẫn", "giới thiệu",
-            "trải nghiệm", "thử", "test", "đánh giá", "bình luận"
+            "trải nghiệm", "thử", "test", "đánh giá", "bình luận", "trang điểm"
         ]
         
         # Common sentence patterns
         self.sentence_patterns = [
-            "{demographic} {action} {content}",
-            "{demographic} {action} {trend}",
-            "{demographic} {action} {content} {trend}",
-            "{content} {demographic} {action}",
-            "{trend} {content} {demographic}",
-            "{quality} {content} {demographic}",
-            "{demographic} {content} {setting}",
-            "{demographic} {action} {content} {setting}",
-            "{trend} {content} {demographic} {setting}",
-            "{demographic} {action} {face} {content}",
-            "{demographic} {action} {face} {trend}",
-            "{content} {demographic} {action} {face}",
-            "{trend} {content} {demographic} {face}",
-            "{quality} {content} {demographic} {face}",
-            "{demographic} {content} {face} {setting}"
+            "{content} {demographic}",
+            "{demographic} {content}",
+            "{trend} {content}",
+            "{content} {trend}",
+            "{quality} {content}",
+            "{content} {setting}",
+            "{setting} {content}",
+            "{demographic} {action}",
+            "{action} {demographic}",
+            "{content} {face}",
+            "{face} {content}",
+            "{trend} {demographic}",
+            "{demographic} {trend}",
+            "{quality} {demographic}",
+            "{demographic} {quality}"
         ]
         
         # Connect to MongoDB
@@ -217,8 +217,7 @@ class KeywordGenerator:
                     # Create new document
                     documents.append({
                         "keyword": keyword,
-                        "crawl_date": current_time,
-                        "is_crawled": False,
+                        "status": "to_crawl",
                         "crawl_count": 0,
                         "last_updated": current_time
                     })

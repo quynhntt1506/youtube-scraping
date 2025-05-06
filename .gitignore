@@ -17,24 +17,72 @@ sdist/
 var/
 wheels/
 *.egg-info/
-.installed
-.cfg
+.installed.cfg
+*.egg
 
 # Virtual Environment
 venv/
 env/
 ENV/
+.env
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Downloaded images and thumbnails
+images/
+thumbnails/
+
+# Database
+*.db
+*.sqlite3
+
+# Config files with sensitive data
+config/local.py
+config/secrets.py
+
+# Generated keywords
+keywords.txt
+
+# Cache
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # Project specific
 data/
 result_crawl/
-*.log
 *.json
 *.jpg
 *.png
@@ -42,5 +90,4 @@ result_crawl/
 
 # API keys and sensitive data
 apikey.txt
-*.env
-.env 
+*.env 

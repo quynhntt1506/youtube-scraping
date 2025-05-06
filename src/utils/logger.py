@@ -1,4 +1,6 @@
 import logging
+from logging.handlers import RotatingFileHandler
+from config.config import LOG_FORMAT, LOG_LEVEL, LOG_FILE
 import os
 import sys
 from pathlib import Path
@@ -18,26 +20,21 @@ class CustomLogger:
         
         # Create logger
         self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(LOG_LEVEL)
         
-        # Create formatters
-        file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        # Create formatter
+        formatter = logging.Formatter(LOG_FORMAT)
+        
+        # Create console handler
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+        self.logger.addHandler(console_handler)
         
         # Create file handler
         log_file = self.log_dir / f"{name}_{datetime.now().strftime('%Y%m%d')}.log"
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(file_formatter)
-        
-        # Create console handler with UTF-8 encoding
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(console_formatter)
-        
-        # Add handlers to logger
+        file_handler.setFormatter(formatter)
         self.logger.addHandler(file_handler)
-        self.logger.addHandler(console_handler)
         
         # Store API key status
         self.api_key_status = {}
@@ -87,6 +84,14 @@ class CustomLogger:
         except UnicodeEncodeError:
             encoded_message = message.encode('utf-8', errors='replace').decode('utf-8')
             self.logger.warning(encoded_message)
+    
+    def debug(self, message: str):
+        """Log debug message.
+        
+        Args:
+            message (str): Message to log
+        """
+        self.logger.debug(message)
     
     def _update_api_key_status(self, api_key: str, status_type: str, message: str):
         """Update API key status tracking.

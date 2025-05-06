@@ -6,6 +6,7 @@ import requests
 from pathlib import Path
 from utils.database import Database
 from utils.common import convert_to_datetime
+from utils.logger import CustomLogger
 from config.config import CHANNEL_IMAGES_DIR, VIDEO_IMAGES_DIR, PROCESSED_DATA_DIR
 import json
 import os
@@ -19,6 +20,8 @@ class YouTubeAPI:
         self.current_key_index = 0
         self.youtube = self._build_service()
         self.call_count = 0
+        self.quota_usage = {}  # Track quota usage per api_key
+        self.logger = CustomLogger("youtube_api")
 
     def _load_api_keys(self) -> List[str]:
         """Load active API keys from database."""
@@ -27,7 +30,7 @@ class YouTubeAPI:
             active_keys = self.api_manager.get_active_api_keys()
             return [key["api_key"] for key in active_keys]
         except Exception as e:
-            print(f"Error loading API keys from database: {e}")
+            self.logger.error(f"Error loading API keys from database: {e}")
             return []
 
     def _build_service(self) -> Optional[Any]:
@@ -39,7 +42,7 @@ class YouTubeAPI:
                 "youtube", "v3", developerKey=self.api_keys[self.current_key_index]
             )
         except Exception as e:
-            print(f"Error building YouTube service: {e}")
+            self.logger.error(f"Error building YouTube service: {e}")
             return None
 
     def _switch_api_key(self) -> bool:
@@ -58,7 +61,7 @@ class YouTubeAPI:
             self.api_keys = self._load_api_keys()
             self.current_key_index = 0
             if not self.api_keys:
-                print("No more active API keys available.")
+                self.logger.error("No more active API keys available.")
                 return False
 
         self.youtube = self._build_service()
@@ -100,8 +103,12 @@ class YouTubeAPI:
                 
                 # Update quota usage
                 if self.current_key_index < len(self.api_keys):
-                    self.api_manager.update_quota(used_api_key, 100)
                     used_quota += 100
+                
+                if used_api_key in self.quota_usage:
+                    self.quota_usage[used_api_key] += 100
+                else:
+                    self.quota_usage[used_api_key] = 100
 
                 for item in response.get("items", []):
                     if item["id"]["kind"] == "youtube#channel":
@@ -121,9 +128,9 @@ class YouTubeAPI:
             except googleapiclient.errors.HttpError as e:
                 error_details = e.error_details[0]
                 if error_details.get("reason") == "quotaExceeded":
-                    print(f"API key quota exceeded. Switching to next key...")
+                    self.logger.warning(f"API key quota exceeded. Switching to next key...")
                     if not self._switch_api_key():
-                        print("No more API keys available. Stopping search.")
+                        self.logger.error("No more API keys available. Stopping search.")
                         break
                     # Update used_api_key after switching
                     if self.current_key_index < len(self.api_keys):
@@ -131,7 +138,7 @@ class YouTubeAPI:
                     # Continue with the same next_page_token to get remaining results
                     continue
                 else:
-                    print(f"API Error: {e}")
+                    self.logger.error(f"API Error: {e}")
                     continue
 
         # Save all responses to file
@@ -181,8 +188,6 @@ class YouTubeAPI:
                 
                 # Update quota usage
                 if self.current_key_index < len(self.api_keys):
-                    # current_api_key = self.api_keys[self.current_key_index]
-                    self.api_manager.update_quota(used_api_key, 100)
                     used_quota += 100
 
                 for item in response.get("items", []):
@@ -220,7 +225,7 @@ class YouTubeAPI:
                     break
 
             except googleapiclient.errors.HttpError as e:
-                print(f"API Error: {e}")
+                self.logger.error(f"API Error: {e}")
                 if not self._switch_api_key():
                     break
                 continue
@@ -286,7 +291,6 @@ class YouTubeAPI:
                 
                 # Update quota usage
                 if self.current_key_index < len(self.api_keys):
-                    self.api_manager.update_quota(used_api_key, 100)
                     used_quota += 100
                 
                 for item in response.get("items", []):
@@ -325,7 +329,7 @@ class YouTubeAPI:
                     break
                     
             except googleapiclient.errors.HttpError as e:
-                print(f"API Error searching videos: {e}")
+                self.logger.error(f"API Error searching videos: {e}")
                 if not self._switch_api_key():
                     break
                 continue
@@ -358,18 +362,22 @@ class YouTubeAPI:
                     id=",".join(batch_ids)
                 )
                 response = request.execute()
-                
+                used_quota += 1
                 # Update quota usage
                 if self.current_key_index < len(self.api_keys):
                     current_api_key = self.api_keys[self.current_key_index]
+                    if current_api_key in self.quota_usage:
+                        self.quota_usage[current_api_key] += 1
+                    else:
+                        self.quota_usage[current_api_key] = 1
+
                     
                 for item in response.get("items", []):
                     channel_info = self._process_channel_item(item)
                     detailed_channels.append(channel_info)
-                    used_quota += 1
-                    self.api_manager.update_quota(current_api_key, 1)
+                    
             except googleapiclient.errors.HttpError as e:
-                print(f"API Error getting channel details: {e}")
+                self.logger.error(f"API Error getting channel details: {e}")
                 if not self._switch_api_key():
                     break
                 continue
@@ -431,7 +439,7 @@ class YouTubeAPI:
                         f.write(chunk)
                 return save_path
         except Exception as e:
-            print(f"Error downloading image {url}: {e}")
+            self.logger.error(f"Error downloading image {url}: {e}")
         return None
 
     def _extract_email(self, text: str) -> str:
@@ -500,6 +508,13 @@ class YouTubeAPI:
                         response = request.execute()
                         used_quota += 1
                         
+                        if self.current_key_index < len(self.api_keys):
+                            current_api_key = self.api_keys[self.current_key_index]
+                            if current_api_key in self.quota_usage:
+                                self.quota_usage[current_api_key] += 1
+                            else:
+                                self.quota_usage[current_api_key] = 1
+
                         for item in response.get("items", []):
                             video_info = {
                                 "videoId": item["contentDetails"]["videoId"],
@@ -522,16 +537,16 @@ class YouTubeAPI:
                     except googleapiclient.errors.HttpError as e:
                         error_details = e.error_details[0]
                         if error_details.get("reason") == "playlistNotFound":
-                            print(f"Uploads playlist not found for channel {playlist_id}. Skipping...")
+                            self.logger.warning(f"Uploads playlist not found for channel {playlist_id}. Skipping...")
                             break
                         else:
-                            print(f"API Error getting playlist items for channel {playlist_id}: {e}")
+                            self.logger.error(f"API Error getting playlist items for channel {playlist_id}: {e}")
                             if not self._switch_api_key():
                                 break
                             continue
                         
             except Exception as e:
-                print(f"Error getting videos for channel {playlist_id}: {e}")
+                self.logger.error(f"Error getting videos for channel {playlist_id}: {e}")
                 continue
                 
             all_videos.extend(videos)
