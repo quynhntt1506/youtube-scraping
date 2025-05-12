@@ -6,7 +6,7 @@ from datetime import datetime
 # Add src directory to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.database import Database
+from src.database.database import Database
 from utils.logger import CustomLogger
 
 # Initialize logger
@@ -43,11 +43,10 @@ def add_api_keys(api_keys_data: List[Dict[str, Any]]) -> None:
                     {"email": email},
                     {
                         "$set": {
-                            "api_key": api_key,
-                            "remaining_quota": quota,
+                            "apiKey": api_key,
+                            "remainingQuota": quota,
                             "status": "active",
-                            "last_updated": current_time,
-                            "updated_at": current_time
+                            "lastUpdated": current_time,
                         }
                     }
                 )
@@ -59,11 +58,10 @@ def add_api_keys(api_keys_data: List[Dict[str, Any]]) -> None:
                 # Insert new API key
                 result = db.collections["api_keys"].insert_one({
                     "email": email,
-                    "api_key": api_key,
-                    "remaining_quota": quota,
+                    "apiKey": api_key,
+                    "remainingQuota": quota,
                     "status": "active",
-                    "last_updated": current_time,
-                    "updated_at": current_time
+                    "lastUpdated": current_time,
                 })
                 logger.info(f"Added new API key for {email}")
                 logger.info(f"Status: Added successfully")
@@ -83,45 +81,10 @@ if __name__ == "__main__":
     # Example usage
     api_keys_to_add = [
         {
-            "email": "quynhntt150602@gmail.com",
-            "api_key": "AIzaSyCzereW1kHUnGvUDRKxAVkrbIYXhCLum4w",
+            "email": "johndoe.0374809044@gmail.com",
+            "api_key": "AIzaSyAZfteIR0pWCNrs8bl9YY3KNDyCrhJwfk4",
             "quota": 10000
         },
-        {
-            "email": "20020117@vnu.edu.vn",
-            "api_key": "AIzaSyDaYvVHnU50j_Ug4iCDzvUD500R2ylbz6c",
-            "quota": 10000
-        },
-        {
-            "email": "trantrunghieu0201@gmail.com",
-            "api_key": "AIzaSyDaqCjg4PQJzyeHDClF1dx4rqCJNvmXo0c",
-            "quota": 10000
-        },
-        {
-            "email": "hoaian150602@gmail.com",
-            "api_key": "AIzaSyCvpZQH3puwKemg72N4BM3NsR8lJ82Al_o",
-            "quota": 10000
-        },
-        {
-            "email": "hieuaccess0201@gmail.com",
-            "api_key": "AIzaSyCfG1Ph-th7CVCfV0Rzd29KESe30YOzZHY",
-            "quota": 10000
-        },
-        {
-            "email": "hieuhocbai0201@gmail.com",
-            "api_key": "AIzaSyBkMPbZ7lkb6grH7D5wzn6u9dRmyP6C-AA",
-            "quota": 10000
-        },
-        {
-            "email": "trantrunghieu0201@gmail.com",
-            "api_key": "AIzaSyDaqCjg4PQJzyeHDClF1dx4rqCJNvmXo0c",
-            "quota": 10000
-        },
-        {
-            "email": "maylaybinhluan@gmail.com",
-            "api_key": "AIzaSyBE2GjcwpnQf3T4tPPqd_f_HpXGxMSJ3IM",
-            "quota": 10000
-        }
     ]
     logger.info("Start adding API keys to database")
     add_api_keys(api_keys_to_add) 

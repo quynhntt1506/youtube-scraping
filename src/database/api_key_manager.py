@@ -26,11 +26,11 @@ class APIKeyManager:
         """
         api_key_doc = {
             "email": email,
-            "api_key": api_key,
-            "remaining_quota": quota,
+            "apiKey": api_key,
+            "remainingQuota": quota,
             "status": self._get_status(quota),
-            "last_updated": datetime.now(),
-            "used_history": []
+            "lastUpdated": datetime.now(),
+            "usedHistory": []
         }
         
         result = self.collection.insert_one(api_key_doc)
@@ -66,20 +66,20 @@ class APIKeyManager:
             bool: True if update successful, False otherwise
         """
         # Get current quota
-        doc = self.collection.find_one({"api_key": api_key})
+        doc = self.collection.find_one({"apiKey": api_key})
         if not doc:
             return False
             
-        new_quota = doc["remaining_quota"] - quota_used
+        new_quota = doc["remainingQuota"] - quota_used
         new_status = self._get_status(new_quota)
         
         result = self.collection.update_one(
-            {"api_key": api_key},
+            {"apiKey": api_key},
             {
-                "$inc": {"remaining_quota": -quota_used},
+                "$inc": {"remainingQuota": -quota_used},
                 "$set": {
                     "status": new_status,
-                    "last_updated": datetime.now()
+                    "lastUpdated": datetime.now()
                 }
             }
         )
@@ -105,7 +105,7 @@ class APIKeyManager:
                 return False
                 
             # Check if API key exists
-            api_key_doc = self.collection.find_one({"api_key": api_key})
+            api_key_doc = self.collection.find_one({"apiKey": api_key})
             if not api_key_doc:
                 print(f"Error: API key {api_key} not found")
                 return False
@@ -119,10 +119,10 @@ class APIKeyManager:
                 
             # Update the document
             result = self.collection.update_one(
-                {"api_key": api_key},
+                {"apiKey": api_key},
                 {
-                    "$push": {"used_history": usage_history},
-                    "$set": {"last_updated": datetime.now()}
+                    "$push": {"usedHistory": usage_history},
+                    "$set": {"lastUpdated": datetime.now()}
                 }
             )
             
@@ -147,8 +147,8 @@ class APIKeyManager:
         Returns:
             List[Dict[str, Any]]: List of keyword usage history
         """
-        doc = self.collection.find_one({"api_key": api_key})
-        return doc.get("used_history", []) if doc else []
+        doc = self.collection.find_one({"apiKey": api_key})
+        return doc.get("usedHistory", []) if doc else []
 
     def get_api_key_stats(self, api_key: str) -> Dict[str, Any]:
         """
@@ -160,20 +160,20 @@ class APIKeyManager:
         Returns:
             Dict[str, Any]: Statistics including quota and usage history
         """
-        doc = self.collection.find_one({"api_key": api_key})
+        doc = self.collection.find_one({"apiKey": api_key})
         if not doc:
             return {}
             
         # Calculate total quota used from history
-        total_quota_used = sum(history.get("used_quota", 0) for history in doc.get("used_history", []))
+        total_quota_used = sum(history.get("used_quota", 0) for history in doc.get("usedHistory", []))
             
         return {
             "email": doc["email"],
-            "remaining_quota": doc["remaining_quota"],
+            "remainingQuota": doc["remainingQuota"],
             "status": doc["status"],
-            "total_quota_used": total_quota_used,
-            "keyword_count": len(doc.get("used_history", [])),
-            "last_updated": doc["last_updated"]
+            "totalQuotaUsed": total_quota_used,
+            "keywordCount": len(doc.get("usedHistory", [])),
+            "lastUpdated": doc["lastUpdated"]
         }
 
     def get_active_api_keys(self) -> List[Dict[str, Any]]:
@@ -206,13 +206,13 @@ class APIKeyManager:
         Returns:
             List[Dict[str, Any]]: List of keyword usage history within the date range
         """
-        doc = self.collection.find_one({"api_key": api_key})
+        doc = self.collection.find_one({"apiKey": api_key})
         if not doc:
             return []
             
         return [
-            history for history in doc.get("used_history", [])
-            if start_date <= history.get("crawl_date", datetime.min) <= end_date
+            history for history in doc.get("usedHistory", [])
+            if start_date <= history.get("crawlDate", datetime.min) <= end_date
         ]
 
     def get_total_quota_used(self, api_key: str) -> int:
@@ -225,11 +225,11 @@ class APIKeyManager:
         Returns:
             int: Total quota used
         """
-        doc = self.collection.find_one({"api_key": api_key})
+        doc = self.collection.find_one({"apiKey": api_key})
         if not doc:
             return 0
             
-        return sum(history.get("used_quota", 0) for history in doc.get("used_history", []))
+        return sum(history.get("used_quota", 0) for history in doc.get("usedHistory", []))
 
     def get_keyword_count(self, api_key: str) -> int:
         """
@@ -241,5 +241,5 @@ class APIKeyManager:
         Returns:
             int: Number of keywords crawled
         """
-        doc = self.collection.find_one({"api_key": api_key})
-        return len(doc.get("used_history", [])) if doc else 0 
+        doc = self.collection.find_one({"apiKey": api_key})
+        return len(doc.get("usedHistory", [])) if doc else 0 

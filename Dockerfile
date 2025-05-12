@@ -4,6 +4,9 @@ FROM python:3.9-slim
 # Set working directory
 WORKDIR /youtube-crawler
 
+ENV MONGODB_URI=mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0
+ENV MONGODB_DB=youtube_data
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -16,15 +19,18 @@ COPY requirements.txt .
 # Install Python dependencies with no cache and parallel processing
 RUN pip install --no-cache-dir -r requirements.txt
 
+
 # Copy the rest of the application
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p data/images/channels data/images/thumbnailvideos
+RUN mkdir -p /mnt/data/youtube/images/channels \
+    /mnt/data/youtube/images/thumbnailvideos \
+    /mnt/data/youtube/logs
 
 # Set environment variables
 ENV PYTHONPATH=/youtube-crawler
-ENV PYTHONUNBUFFERED=1
 
 # Command to run the application
-CMD ["python", "src/generate_keywords.py"] 
+ENTRYPOINT ["python", "src/main.py"]
+CMD ["--service", "crawl-data", "--num-keywords", "1"] 

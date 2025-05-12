@@ -2,12 +2,11 @@ services:
   youtube-crawler:
     build: .
     volumes:
-      - ./data:/youtube-crawler/data
-      - ./logs:/youtube-crawler/logs
+      - .:/youtube-crawler
+      - /mnt/data/youtube:/mnt/data/youtube
     environment:
       - MONGODB_URI=mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0
       - MONGODB_DB=youtube_data
       - PYTHONPATH=/youtube-crawler
-      - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=INFO
-
+    command: python src/main.py
+    restart: unless-stopped

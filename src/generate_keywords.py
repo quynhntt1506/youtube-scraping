@@ -2,7 +2,7 @@ import argparse
 from utils.keyword_generator import KeywordGenerator
 from src.controller.crawler import crawl_video_in_channel_by_many_keywords
 from datetime import datetime
-from utils.database import Database
+from src.database.database import Database
 
 def generate_and_crawl(num_keywords: int = 1):
     """Generate Vietnamese keywords and start crawling process.

@@ -2,7 +2,7 @@ import random
 from typing import List, Dict
 from datetime import datetime
 from pymongo import MongoClient
-from config.config import MONGODB_URI, MONGODB_DB
+from config.config import MONGODB_URI, MONGODB_DB, STATUS_ENTITY
 from .logger import CustomLogger
 
 class KeywordGenerator:
@@ -97,7 +97,7 @@ class KeywordGenerator:
         # Connect to MongoDB
         self.client = MongoClient(MONGODB_URI)
         self.db = self.client[MONGODB_DB]
-        self.collection = self.db["keyword_generation"]
+        self.collection = self.db["youtube_keywords"]
 
     def generate_keywords(self, num_keywords: int = 100) -> List[str]:
         """Generate a list of meaningful Vietnamese keywords related to human faces and content.
@@ -208,7 +208,7 @@ class KeywordGenerator:
                         {"keyword": keyword},
                         {
                             "$set": {
-                                "last_updated": current_time
+                                "lastUpdated": current_time
                             }
                         }
                     )
@@ -217,9 +217,10 @@ class KeywordGenerator:
                     # Create new document
                     documents.append({
                         "keyword": keyword,
-                        "status": "to_crawl",
-                        "crawl_count": 0,
-                        "last_updated": current_time
+                        "status": STATUS_ENTITY["to_crawl"],
+                        "type": "auto_generated",
+                        "crawlCount": 0,
+                        "lastUpdated": current_time
                     })
             
             # Bulk insert new keywords

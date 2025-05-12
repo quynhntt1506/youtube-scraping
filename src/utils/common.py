@@ -74,3 +74,14 @@ def get_timestamp_from_datetime(dt: datetime) -> float:
         float: Unix timestamp
     """
     return dt.timestamp() 
+
+def format_datetime_to_iso(published_at: str) -> str:
+    if "." in published_at:
+        if "Z" in published_at:
+            base = published_at.split(".")[0]
+            published_at = f"{base}Z"
+        elif "+" in published_at:
+            base, tz = published_at.split("+")
+            base = base.split(".")[0]
+            published_at = f"{base}+{tz}"
+    return published_at
