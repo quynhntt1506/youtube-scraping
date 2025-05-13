@@ -312,72 +312,68 @@ class YouTubeAPI:
         """Close database connection."""
         self.db.close()
 
-    def get_all_videos_from_playlist(self, playlist_ids: List[str]) -> Dict[str, Any]:
-        """Get all videos from multiple playlists."""
-        all_videos = []
+    def get_all_videos_from_playlist(self, playlist_id: str) -> Dict[str, Any]:
+        """Get all videos from a playlist."""
+        videos = []
         quota_usage = {}
         all_responses = []
-        crawled_playlist_ids = []        
+        next_page_token = None
         
-        for playlist_id in playlist_ids:
-            videos = []
-            next_page_token = None
-            
-            try:
-                while True:
-                    try:
-                        request = self.youtube.playlistItems().list(
-                            part="snippet,contentDetails",
-                            playlistId=playlist_id,
-                            maxResults=MAX_RESULTS_PER_PAGE,
-                            pageToken=next_page_token
-                        )
-                        
-                        response = request.execute()
-                        all_responses.append(response)
-                        
-                        # Track quota usage
-                        quota_usage = self._track_quota(1, quota_usage)
+        try:
+            while True:
+                try:
+                    request = self.youtube.playlistItems().list(
+                        part="snippet,contentDetails",
+                        playlistId=playlist_id,
+                        maxResults=MAX_RESULTS_PER_PAGE,
+                        pageToken=next_page_token
+                    )
+                    
+                    response = request.execute()
+                    all_responses.append(response)
+                    
+                    # Track quota usage
+                    quota_usage = self._track_quota(1, quota_usage)
 
-                        for item in response.get("items", []):
-                            video_info = Video.from_youtube_response_playlist(item, playlist_id)
-                            # Convert to dict and remove _id field if it's None
-                            video_dict = video_info.model_dump(by_alias=True)
-                            if video_dict.get("_id") is None:
-                                video_dict.pop("_id", None)
-                            videos.append(video_dict)
-                        next_page_token = response.get("nextPageToken")
-                        if not next_page_token:
+                    for item in response.get("items", []):
+                        video_info = Video.from_youtube_response_playlist(item, playlist_id)
+                        # Convert to dict and remove _id field if it's None
+                        video_dict = video_info.model_dump(by_alias=True)
+                        if video_dict.get("_id") is None:
+                            video_dict.pop("_id", None)
+                        videos.append(video_dict)
+                    next_page_token = response.get("nextPageToken")
+                    if not next_page_token:
+                        break
+                        
+                except googleapiclient.errors.HttpError as e:
+                    error_details = e.error_details[0]
+                    if error_details.get("reason") == "quotaExceeded":
+                        self.logger.warning(f"API key quota exceeded. Switching to next key...")
+                        if not self._switch_api_key():
+                            self.logger.error("No more API keys available. Stopping video retrieval.")
                             break
-                            
-                    except googleapiclient.errors.HttpError as e:
-                        error_details = e.error_details[0]
-                        if error_details.get("reason") == "quotaExceeded":
-                            self.logger.warning(f"API key quota exceeded. Switching to next key...")
-                            if not self._switch_api_key():
-                                self.logger.error("No more API keys available. Stopping video retrieval.")
-                                break
-                            continue
-                        elif error_details.get("reason") == "playlistNotFound":
-                            self.logger.warning(f"Playlist {playlist_id} not found.")
-                            break
-                        else:
-                            self.logger.error(f"API Error getting playlist items: {e}")
-                            break
-                            
-            except Exception as e:
-                self.logger.error(f"Error getting videos for playlist {playlist_id}: {e}")
-                continue
-            crawled_playlist_ids.append(playlist_id)
-            self.logger.info(f"Crawled {len(videos)} videos for playlist {playlist_id}")
-            all_videos.extend(videos)
-        # if all_responses:
-        #     self.save_crawl_result_playlist(all_responses, "playlist")
+                        continue
+                    elif error_details.get("reason") == "playlistNotFound":
+                        self.logger.warning(f"Playlist {playlist_id} not found.")
+                        break
+                    else:
+                        self.logger.error(f"API Error getting playlist items: {e}")
+                        break
+                        
+        except Exception as e:
+            self.logger.error(f"Error getting videos for playlist {playlist_id}: {e}")
+            return {
+                "videos": [],
+                "quota_usage": quota_usage,
+                "crawled_playlist_ids": []
+            }
             
-            
+        self.logger.info(f"Crawled {len(videos)} videos for playlist {playlist_id}")
+        
         return {
-            "crawled_playlist_ids": crawled_playlist_ids,
-            "videos": all_videos,
+            "crawled_playlist_ids": [playlist_id],
+            "videos": videos,
             "quota_usage": quota_usage
         }
 

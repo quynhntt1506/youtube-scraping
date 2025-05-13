@@ -81,29 +81,23 @@ def crawl_channels_by_keyword(keyword: str, max_results: int = MAX_CHANNELS) -> 
     finally:
         db.close()
 
-def crawl_videos_from_channels(channels: List[dict]) -> Dict[str, Any]:
-    """Crawl videos from channel playlists."""
+def crawl_videos_from_playlist(playlist_id: str) -> Dict[str, Any]:
+    """Crawl videos from a playlist."""
     api = YouTubeAPI()
     db = Database()
     
     try:
-        # Get playlist IDs
-        playlist_ids = [c["playlistId"] for c in channels if c.get("playlistId")]
-        videos = []
-        # Get videos from playlists
-        for i in range(0, len(playlist_ids), MIN_ENTITY_IN_BATCH):
-            batch_playlist_ids = playlist_ids[i:i+MIN_ENTITY_IN_BATCH]
-            playlist_result = api.get_all_videos_from_playlist(batch_playlist_ids)
-            batch_videos = playlist_result["videos"]
-            videos.extend(batch_videos)
-            logger.info(f"Found {len(batch_videos)} videos from playlists")
-            db.insert_many_videos(batch_videos)
-            # Update channel status to crawled_video
-            result_update_status_channel_db = db.update_channels_status_by_playlist_ids(playlist_result["crawled_playlist_ids"])
-            logger.info(f"Updated {result_update_status_channel_db['updated_count']} channels to 'crawled_video'")
-            
-            # Update quota usage to db 
-            playlist_quota = update_quota_usage(playlist_result["quota_usage"])
+        # Get videos from playlist
+        playlist_result = api.get_all_videos_from_playlist(playlist_id)
+        videos = playlist_result["videos"]
+        logger.info(f"Found {len(videos)} videos from playlist")
+        
+        # Update channel status to crawled_video
+        result_update_status_channel_db = db.update_channels_status_by_playlist_ids(playlist_result["crawled_playlist_ids"])
+        logger.info(f"Updated {result_update_status_channel_db['updated_count']} channels to 'crawled_video'")
+        
+        # Update quota usage to db 
+        playlist_quota = update_quota_usage(playlist_result["quota_usage"])
         
         # Get video details and process in batches of 50
         all_videos = []
@@ -221,7 +215,7 @@ def crawl_video_in_channel_by_keyword(keyword: str, max_results: int = MAX_CHANN
         detailed_channels = channel_result["detailed_channels"]
 
         # Crawl videos
-        video_result = crawl_videos_from_channels(detailed_channels)
+        video_result = crawl_videos_from_playlist(detailed_channels[0]["playlistId"])
         new_videos_ids = video_result["new_videos"]
         videos = video_result["videos"]
         

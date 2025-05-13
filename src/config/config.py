@@ -2,10 +2,11 @@ import os
 from pathlib import Path
 
 # MongoDB configuration
-MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0')
-MONGODB_DB = os.getenv('MONGODB_DB', 'youtube_data')
-# MONGODB_URI = 'mongodb://localhost:27017/'
+# MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0')
+# MONGODB_DB = os.getenv('MONGODB_DB', 'youtube_data')
 
+MONGODB_URI = 'mongodb://localhost:27017/'
+MONGODB_DB = 'youtube_crawl_test'
 
 
 # Define base directories
@@ -28,10 +29,10 @@ for directory in DIRECTORIES.values():
     directory.mkdir(parents=True, exist_ok=True)
 
 # API configuration
-MAX_CHANNELS = 500
+MAX_CHANNELS = 10
 MIN_ENTITY_IN_BATCH = 50
 MAX_ENTITY_IN_BATCH = 100
-MAX_RESULTS_PER_PAGE = 50
+MAX_RESULTS_PER_PAGE = 10
 MAX_ID_PAYLOAD = 50
 MAX_FILES_PER_FOLDER = 5000
 COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY = 100
