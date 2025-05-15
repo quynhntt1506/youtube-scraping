@@ -32,7 +32,7 @@ class Channel(BaseModel):
     avatarUrl: Optional[str] = None
     bannerUrl: Optional[str] = None
     playlistId: Optional[str] = None
-    crawlDate: datetime = Field(default_factory=datetime.now)
+    # crawlDate: datetime = Field(default_factory=datetime.now)
     status: Optional[str] = None
 
     @staticmethod
@@ -70,6 +70,6 @@ class Channel(BaseModel):
             avatarUrl=snippet.get("thumbnails", {}).get("default", {}).get("url"),
             bannerUrl=branding.get("image", {}).get("bannerExternalUrl"),
             playlistId=content_details.get("relatedPlaylists", {}).get("uploads"),
-            crawlDate=datetime.now(),
+            # crawlDate=datetime.now(),
             status=STATUS_ENTITY["crawled_channel"]
         )

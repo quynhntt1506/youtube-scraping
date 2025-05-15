@@ -1,6 +1,8 @@
 from datetime import datetime
-from typing import Optional, Union
+from typing import Optional, Union, Dict
 from dateutil import parser
+import re
+from urllib.parse import urlparse, unquote
 
 def convert_to_datetime(date_str: str) -> Optional[datetime]:
     """
@@ -85,3 +87,98 @@ def format_datetime_to_iso(published_at: str) -> str:
             base = base.split(".")[0]
             published_at = f"{base}+{tz}"
     return published_at
+
+def parse_youtube_channel_url(url: str) -> Dict[str, Optional[str]]:
+    """Parse YouTube channel URL and extract channel ID or username.
+    
+    Args:
+        url (str): YouTube channel URL
+        
+    Returns:
+        Dict[str, Optional[str]]: Dictionary containing:
+            - type: 'channel_id', 'username', 'custom_url', or 'customUrl'
+            - value: channel ID or username
+            - original_url: original URL
+            
+    Examples:
+        >>> parse_youtube_channel_url("https://www.youtube.com/channel/UCxxxxxxxx")
+        {'type': 'channel_id', 'value': 'UCxxxxxxxx', 'original_url': 'https://www.youtube.com/channel/UCxxxxxxxx'}
+        
+        >>> parse_youtube_channel_url("https://www.youtube.com/@username")
+        {'type': 'customUrl', 'value': '@username', 'original_url': 'https://www.youtube.com/@username'}
+        
+        >>> parse_youtube_channel_url("https://www.youtube.com/user/username")
+        {'type': 'username', 'value': 'username', 'original_url': 'https://www.youtube.com/user/username'}
+    """
+    # Clean and normalize URL
+    url = url.strip()
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+        
+    try:
+        parsed_url = urlparse(url)
+        
+        # Check if it's a YouTube URL
+        if not any(domain in parsed_url.netloc.lower() for domain in ['youtube.com', 'www.youtube.com', 'youtu.be']):
+            return {
+                'type': None,
+                'value': None,
+                'original_url': url
+            }
+            
+        # Split path into parts
+        path_parts = parsed_url.path.strip('/').split('/')
+        
+        if len(path_parts) < 2:
+            return {
+                'type': None,
+                'value': None,
+                'original_url': url
+            }
+            
+        # Handle different URL formats
+        if path_parts[0] == 'channel':
+            # Format: /channel/UCxxxxxxxx
+            channel_id = path_parts[1]
+            if re.match(r'^UC[a-zA-Z0-9_-]{22}$', channel_id):
+                return {
+                    'type': 'channel_id',
+                    'value': channel_id,
+                    'original_url': url
+                }
+                
+        elif path_parts[0].startswith('@'):
+            # Format: /@username
+            username = path_parts[0]  # Keep @ symbol
+            return {
+                'type': 'customUrl',
+                'value': username,
+                'original_url': url
+            }
+            
+        elif path_parts[0] == 'user':
+            # Format: /user/username
+            username = path_parts[1]
+            return {
+                'type': 'username',
+                'value': username,
+                'original_url': url
+            }
+            
+        elif path_parts[0] == 'c':
+            # Format: /c/username
+            username = path_parts[1]
+            return {
+                'type': 'custom_url',
+                'value': username,
+                'original_url': url
+            }
+            
+    except Exception as e:
+        print(f"Error parsing URL: {str(e)}")
+        
+    return {
+        'type': None,
+        'value': None,
+        'original_url': url
+    }

@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 from pathlib import Path
 from datetime import datetime
+import json
 
 from utils.logger import CustomLogger
 from utils.api import YouTubeAPI
@@ -8,10 +9,18 @@ from src.database.database import Database
 from src.database.api_key_manager import APIKeyManager
 from src.controller.image_downloader import download_channel_images
 from src.controller.thumbnail_downloader import download_video_thumbnails
+from utils.common import parse_youtube_channel_url
 from config.config import MAX_CHANNELS, MAX_ENTITY_IN_BATCH, MIN_ENTITY_IN_BATCH
 
 # Initialize logger
 logger = CustomLogger("crawler")
+
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder for datetime objects."""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 def update_quota_usage(quota_usage: Dict[str, int]) -> None:
     db = Database()
@@ -80,6 +89,163 @@ def crawl_channels_by_keyword(keyword: str, max_results: int = MAX_CHANNELS) -> 
         
     finally:
         db.close()
+
+def crawl_channel_by_id(channel_ids: List[str]) -> Dict[str, Any]:
+    """Crawl channel by id."""
+    api = YouTubeAPI()
+    db = Database()
+
+    try:
+        logger.info(f"Crawling channel {channel_ids}")
+        channel_result = api.get_channel_detail_by_ids(channel_ids)
+        image_result = download_channel_images(channel_result["detailed_channels"])
+
+        all_detaled_channels = [];
+        # Create data/json/yyyy-mm-dd directory
+        today = datetime.now().strftime("%Y-%m-%d")
+        json_dir = Path("data/json") / today
+        json_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save each channel's data to a separate JSON file
+        for channel in image_result["updated_channels"]:
+            channel_id = channel["channelId"]
+            json_path = json_dir / f"{channel_id}.json"
+            channel["jsonPath"] = str(json_path)
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(channel, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+            logger.info(f"Saved channel data to {json_path}")
+            all_detaled_channels.append(channel)
+
+        result_db = db.insert_many_channels(all_detaled_channels)
+        return {
+            # "new_channels": channel_result["detailed_channels"],
+            "new_channels": all_detaled_channels,
+        }
+    finally:
+        db.close()
+    
+def crawl_channel_by_id(channel_ids: List[str]) -> Dict[str, Any]:
+    """Crawl channel by id."""
+    api = YouTubeAPI()
+    db = Database()
+
+    try:
+        logger.info(f"Crawling channel {channel_ids}")
+        channel_result = api.get_channel_detail_by_ids(channel_ids)
+        image_result = download_channel_images(channel_result["detailed_channels"])
+
+        all_detaled_channels = [];
+        # Create data/json/yyyy-mm-dd directory
+        today = datetime.now().strftime("%Y-%m-%d")
+        json_dir = Path("data/json") / today
+        json_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save each channel's data to a separate JSON file
+        for channel in image_result["updated_channels"]:
+            channel_id = channel["channelId"]
+            json_path = json_dir / f"{channel_id}.json"
+            channel["jsonPath"] = str(json_path)
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(channel, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+            logger.info(f"Saved channel data to {json_path}")
+            all_detaled_channels.append(channel)
+
+        result_db = db.insert_many_channels(all_detaled_channels)
+        return {
+            # "new_channels": channel_result["detailed_channels"],
+            "new_channels": all_detaled_channels,
+        }
+    finally:
+        db.close()
+
+def crawl_channel_by_custom_urls(custom_urls: List[str]) -> Dict[str, Any]:
+    """Crawl channel by id."""
+    api = YouTubeAPI()
+    db = Database()
+
+    try:
+        logger.info(f"Crawling channel {custom_urls}")
+        channel_result = api.get_channel_detail_by_custom_urls(custom_urls)
+        image_result = download_channel_images(channel_result["detailed_channels"])
+
+        all_detaled_channels = [];
+        # Create data/json/yyyy-mm-dd directory
+        today = datetime.now().strftime("%Y-%m-%d")
+        json_dir = Path("data/json") / today
+        json_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save each channel's data to a separate JSON file
+        for channel in image_result["updated_channels"]:
+            channel_id = channel["channelId"]
+            json_path = json_dir / f"{channel_id}.json"
+            channel["jsonPath"] = str(json_path)
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(channel, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+            logger.info(f"Saved channel data to {json_path}")
+            all_detaled_channels.append(channel)
+
+        result_db = db.insert_many_channels(all_detaled_channels)
+        return {
+            # "new_channels": channel_result["detailed_channels"],
+            "new_channels": all_detaled_channels,
+        }
+    finally:
+        db.close()
+
+def crawl_channel_by_urls(channel_urls: List[str]) -> Dict[str, Any]:
+    """Crawl channel by url."""
+    api = YouTubeAPI()
+    db = Database()
+    channel_ids = []
+    custom_urls = []
+    usernames = []
+    detail_channel_results = []
+    try:
+        for channel_url in channel_urls:
+            parse_url = parse_youtube_channel_url(channel_url)
+            if parse_url["type"] == "channel_id":
+                channel_ids.append(parse_url["value"])
+            elif parse_url["type"] == "custom_url":
+                custom_urls.append(parse_url["value"])
+            elif parse_url["type"] == "username":
+                usernames.append(parse_url["value"])
+        logger.info(f"Crawling channel {channel_urls}")
+        if channel_ids:
+            channel_result = api.get_channel_detail_by_ids(channel_ids)
+            detail_channel_results.extend(channel_result["detailed_channels"])
+        elif custom_urls:
+            channel_result = api.get_channel_detail_by_custom_urls(custom_urls)
+            detail_channel_results.extend(channel_result["detailed_channels"])
+        elif usernames:
+            channel_result = api.get_channel_detail_by_usernames(usernames)
+            detail_channel_results.extend(channel_result["detailed_channels"])
+
+        image_result = download_channel_images(detail_channel_results)
+
+        all_detailed_channels = [];
+        # Create data/json/yyyy-mm-dd directory
+        today = datetime.now().strftime("%Y-%m-%d")
+        json_dir = Path("data/json") / today
+        json_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save each channel's data to a separate JSON file
+        for channel in image_result["updated_channels"]:
+            channel_id = channel["channelId"]
+            json_path = json_dir / f"{channel_id}.json"
+            channel["jsonPath"] = str(json_path)
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(channel, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+            logger.info(f"Saved channel data to {json_path}")
+            all_detailed_channels.append(channel)
+
+        result_db = db.insert_many_channels(all_detailed_channels)
+        return {
+            # "new_channels": channel_result["detailed_channels"],
+            "new_channels": all_detailed_channels,
+        }
+    finally:
+        db.close()
+
 
 def crawl_videos_from_playlist(playlist_id: str) -> Dict[str, Any]:
     """Crawl videos from a playlist."""
@@ -204,9 +370,7 @@ def crawl_comments_from_videos(video_ids: List[str]) -> Dict[str, Any]:
 
 def crawl_video_in_channel_by_keyword(keyword: str, max_results: int = MAX_CHANNELS) -> Dict[str, Any]:
     """Process a single keyword."""
-    api = YouTubeAPI()
     db = Database()
-    api_manager = APIKeyManager(db)
     
     try:
         # Crawl channels
@@ -234,6 +398,14 @@ def crawl_video_in_channel_by_keyword(keyword: str, max_results: int = MAX_CHANN
         
     finally:
         db.close()
+    
+
+# def crawl_channels_by_ids(channel_ids: list[str]):
+#     print("START")
+#     print(channel_ids)
+#     result = crawl_channel_by_id(channel_ids)
+#     logger.info(f"Crawled {len(result.get('new_channels'))} new channels")
+
 
 def crawl_video_in_channel_by_many_keywords(keywords: list[str]):
         

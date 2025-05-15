@@ -1,12 +1,12 @@
 services:
-  youtube-crawler:
+  youtube-crawler-v2:
     build: .
     volumes:
       - .:/youtube-crawler
       - /mnt/data/youtube:/mnt/data/youtube
     environment:
-      - MONGODB_URI=mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0
-      - MONGODB_DB=youtube_data
+      - MONGODB_URI=mongodb://localhost:27017/
+      - MONGODB_DB=youtube_crawl_test
       - PYTHONPATH=/youtube-crawler
     command: python src/main.py
     restart: unless-stopped

@@ -26,13 +26,14 @@ from src.config.config import (
 
 class YouTubeAPI:
     def __init__(self):
+        self.logger = CustomLogger("youtube_api")
         self.db = Database()
         self.api_manager = APIKeyManager(self.db)
         self.api_keys = self._load_api_keys()
         self.current_key_index = 0
         self.youtube = self._build_service()
         self.call_count = 0
-        self.logger = CustomLogger("youtube_api")
+        self._batch_results = []  # Initialize batch results list
 
     def _load_api_keys(self) -> List[str]:
         """Load active API keys from database."""
@@ -174,7 +175,7 @@ class YouTubeAPI:
             "quota_usage": quota_usage
         }
 
-    def get_channel_details(self, channel_ids: List[str]) -> Dict[str, Any]:
+    def get_channel_detail_by_ids(self, channel_ids: List[str]) -> Dict[str, Any]:
         """Get detailed information for multiple channels."""
         detailed_channels = []
         quota_usage = {}
@@ -218,7 +219,136 @@ class YouTubeAPI:
             "detailed_channels": detailed_channels,
             "quota_usage": quota_usage
         }
+    
+    def _batch_callback(self, request_id, response, exception):
+        """Callback function for batch requests.
+        
+        Args:
+            request_id: ID of the request
+            response: Response from the API
+            exception: Exception if any
+        """
+        if exception is not None:
+            self.logger.error(f"Error in batch request {request_id}: {exception}")
+            self._batch_results.append(None)
+        else:
+            if response and "items" in response and len(response["items"]) > 0:
+                self._batch_results.append(response["items"][0])
+            else:
+                self._batch_results.append(None)
 
+    def get_channel_detail_by_custom_urls(self, custom_urls: List[str]) -> Dict[str, Any]:
+        """Get detailed information for multiple channels using custom URLs (@username).
+        
+        Args:
+            custom_urls (List[str]): List of custom URLs (@username)
+            
+        Returns:
+            Dict[str, Any]: Dictionary containing:
+                - detailed_channels: List of channel details
+                - quota_usage: Dictionary of quota usage per API key
+        """
+        detailed_channels = []
+        quota_usage = {}
+        self._batch_results = []  # Reset batch results
+        
+        # Create batch request
+        batch = self.youtube.new_batch_http_request()
+        
+        # Add requests to batch
+        for custom_url in custom_urls:
+            # Remove @ symbol if present
+            print(custom_url)
+            handle = custom_url[1:] if custom_url.startswith('@') else custom_url
+            
+            # Create request with forHandle parameter
+            request = self.youtube.channels().list(
+                part="snippet,statistics,topicDetails,brandingSettings,contentDetails",
+                forHandle=handle,  # Use handle without @ symbol
+            )
+            batch.add(request, callback=self._batch_callback)
+            
+        # Execute batch request
+        batch.execute()
+        
+        # Process results
+        for channel in self._batch_results:
+            if channel:
+                try:
+                    channel_info = Channel.from_youtube_response(channel)
+                    # Convert to dict and remove _id field if it's None
+                    channel_dict = channel_info.model_dump(by_alias=True)
+                    if channel_dict.get("_id") is None:
+                        channel_dict.pop("_id", None)
+                    detailed_channels.append(channel_dict)
+                except Exception as e:
+                    self.logger.error(f"Error processing channel {channel.get('id')}: {e}")
+                    continue
+        
+        # Update quota usage
+        # quota_usage[self.current_api_key] = len(custom_urls) * 1  # 1 unit per channel
+        
+        return {
+            "detailed_channels": detailed_channels,
+            "quota_usage": quota_usage
+        }
+
+    def get_channel_detail_by_usernames(self, usernames: List[str]) -> Dict[str, Any]:
+        """Get detailed information for multiple channels using custom URLs (@username).
+        
+        Args:
+            custom_urls (List[str]): List of custom URLs (@username)
+            
+        Returns:
+            Dict[str, Any]: Dictionary containing:
+                - detailed_channels: List of channel details
+                - quota_usage: Dictionary of quota usage per API key
+        """
+        detailed_channels = []
+        quota_usage = {}
+        self._batch_results = []  # Reset batch results
+        
+        # Create batch request
+        batch = self.youtube.new_batch_http_request()
+        
+        # Add requests to batch
+        for username in usernames:
+            # Remove @ symbol if present
+            # handle = custom_url[1:] if custom_url.startswith('@') else custom_url
+            
+            # Create request with forHandle parameter
+            request = self.youtube.channels().list(
+                part="snippet,statistics,contentDetails",
+                forUsername=username,
+                maxResults=1
+            )
+            batch.add(request, callback=self._batch_callback)
+            
+        # Execute batch request
+        batch.execute()
+        
+        # Process results
+        for channel in self._batch_results:
+            if channel:
+                try:
+                    channel_info = Channel.from_youtube_response(channel)
+                    # Convert to dict and remove _id field if it's None
+                    channel_dict = channel_info.model_dump(by_alias=True)
+                    if channel_dict.get("_id") is None:
+                        channel_dict.pop("_id", None)
+                    detailed_channels.append(channel_dict)
+                except Exception as e:
+                    self.logger.error(f"Error processing channel {channel.get('id')}: {e}")
+                    continue
+        
+        # Update quota usage
+        # quota_usage[self.current_api_key] = len(custom_urls) * 1  # 1 unit per channel
+        
+        return {
+            "detailed_channels": detailed_channels,
+            "quota_usage": quota_usage
+        }
+    
     # def save_crawl_result(self, result: list, keyword: str) -> None:
     #     """Save crawl results to JSON file."""
     #     data = {
