@@ -7,7 +7,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.database.database import Database
-from utils.logger import CustomLogger
+from src.utils.logger import CustomLogger
 
 # Initialize logger
 logger = CustomLogger("save_quota")

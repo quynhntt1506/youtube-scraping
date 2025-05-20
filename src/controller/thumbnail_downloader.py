@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Dict, Any
 from datetime import datetime
 
-from utils.logger import CustomLogger
-from config.config import DIRECTORIES, MAX_FILES_PER_FOLDER
+from src.utils.logger import CustomLogger
+from src.config.config import DIRECTORIES, MAX_FILES_PER_FOLDER
 
 # Initialize logger
 logger = CustomLogger("thumbnail_downloader")

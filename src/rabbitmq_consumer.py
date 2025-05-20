@@ -2,8 +2,8 @@ import pika
 import json
 from typing import Dict, Any
 from src.utils.logger import CustomLogger
-from src.controller.crawler import crawl_channel_by_id, crawl_channel_by_custom_urls
-from src.controller.send_to_crawler import send_to_crawler
+from src.controller.crawler_by_request import *
+from src.controller.send_to_data_controller import *
 
 logger = CustomLogger("rabbitmq_consumer")
 
@@ -46,33 +46,51 @@ class RabbitMQConsumer:
             # Parse message body
             message = json.loads(body.decode('utf-8'))
             print(message)
-            
-            channel_id = message.get("body", {}).get("channelId")
-            custom_urls = message.get("body", {}).get("customUrl")
-            
-            if not channel_id and not custom_urls:
-                logger.error("No channel_id or custom_urls found in message")
-                ch.basic_nack(delivery_tag=method.delivery_tag)
-                return
-            
-            if channel_id:
-                logger.info(f"Processing channel: {channel_id}")
-                result = crawl_channel_by_id(channel_id)
-                if result.get("new_channels"):
-                    send_to_crawler(result.get("new_channels"))
-                logger.info(f"Crawled channel {channel_id}")
-            elif custom_urls:
-                logger.info(f"Processing custom_urls: {custom_urls}")
-                result = crawl_channel_by_custom_urls(custom_urls)
-                if result.get("new_channels"):
-                    send_to_crawler(result.get("new_channels"))
-                logger.info(f"Crawled channel {custom_urls}")
+            action = message.get("action")
+            if action == "CHANNEL_INFO":
+                channel_id = message.get("body", {}).get("channelId")
+                custom_urls = message.get("body", {}).get("customUrl")
+                
+                if not channel_id and not custom_urls:
+                    logger.error("No channel_id or custom_urls found in message")
+                    ch.basic_nack(delivery_tag=method.delivery_tag)
+                    return
+                
+                if channel_id:
+                    logger.info(f"Processing channel: {channel_id}")
+                    result = crawl_channel_by_id(channel_id)
+                    # if result.get("new_channels"):
+                    #     send_channel_to_data_controller(result.get("new_channels"))
+                    logger.info(f"Crawled channel {channel_id}")
+                elif custom_urls:
+                    logger.info(f"Processing custom_urls: {custom_urls}")
+                    result = crawl_channel_by_custom_urls(custom_urls)
+                    # if result.get("new_channels"):
+                    #     send_channel_to_data_controller(result.get("new_channels"))
+                    logger.info(f"Crawled channel {custom_urls}")
+            elif action == "VIDEO_INFO":
+                video_id = message.get("body", {}).get("videoId")
+                url = message.get("body", {}).get("url")
+                if not video_id and not url:
+                    logger.error("No video_id or url found in message")
+                    ch.basic_nack(delivery_tag=method.delivery_tag)
+                    return
+                if video_id:
+                    logger.info(f"Processing video: {video_id}")
+                    result = crawl_video_by_ids(video_id)
+                    # if result.get("new_videos"):
+                    #     send_video_to_data_controller(result.get("new_videos"))
+                    logger.info(f"Crawled video {video_id}")
+                # elif url:
+                #     logger.info(f"Processing video: {url}")
+                #     result = crawl_video_by_url(url)
+                #     logger.info(f"Crawled video {video_id if video_id else url}")
             # logger.info(f"Processing channel: {channel_id}")
             
             # # Crawl channel
             # result = crawl_channel_by_id(channel_id)
             # if result.get("new_channels"):
-            #     send_to_crawler(result.get("new_channels"))
+            #     send_channel_to_data_controller(result.get("new_channels"))
             
             # logger.info(f"Crawled channel {channel_id}")
             

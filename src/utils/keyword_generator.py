@@ -2,8 +2,8 @@ import random
 from typing import List, Dict
 from datetime import datetime
 from pymongo import MongoClient
-from config.config import MONGODB_URI, MONGODB_DB, STATUS_ENTITY
-from .logger import CustomLogger
+from src.config.config import MONGODB_URI, MONGODB_DB, STATUS_ENTITY
+from src.utils.logger import CustomLogger
 
 class KeywordGenerator:
     def __init__(self):

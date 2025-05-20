@@ -5,8 +5,8 @@ import paramiko
 from pathlib import Path
 from typing import Dict, List, Any
 from datetime import datetime
-from utils.logger import CustomLogger
-from config.config import DIRECTORIES, COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY, MAX_FILES_PER_FOLDER
+from src.utils.logger import CustomLogger
+from src.config.config import DIRECTORIES, COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY, MAX_FILES_PER_FOLDER
 
 # Initialize logger
 logger = CustomLogger("image_downloader")

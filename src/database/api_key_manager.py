@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from bson import ObjectId
-from .database import Database
+from src.database.database import Database
 
 class APIKeyManager:
     def __init__(self, db: Database):

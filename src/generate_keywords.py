@@ -1,6 +1,6 @@
 import argparse
 from utils.keyword_generator import KeywordGenerator
-from src.controller.crawler import crawl_video_in_channel_by_many_keywords
+from src.controller.crawler_auto import crawl_video_in_channel_by_many_keywords
 from datetime import datetime
 from src.database.database import Database
 

@@ -7,7 +7,7 @@ from src.utils.logger import CustomLogger
 
 logger = CustomLogger("send_to_crawler")
 
-def send_to_crawler(detailed_channels: List[Dict[str, Any]]) -> Dict[str, Any]:
+def send_channel_to_data_controller(detailed_channels: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Send crawled channel data to crawler API.
     
     Args:
@@ -24,12 +24,10 @@ def send_to_crawler(detailed_channels: List[Dict[str, Any]]) -> Dict[str, Any]:
     for channel in detailed_channels:
         try:
             channel_id = channel["channelId"]
-            avatar_path = channel["avatarPath"]
-            banner_path = channel["bannerPath"]
             json_path = channel["jsonPath"]
             
-            if not all([avatar_path, banner_path, json_path]):
-                logger.error(f"Missing required paths for channel {channel_id}")
+            if not json_path:
+                logger.error(f"Missing required json path for channel {channel_id}")
                 results["failed"].append(channel_id)
                 continue
                 
@@ -38,10 +36,16 @@ def send_to_crawler(detailed_channels: List[Dict[str, Any]]) -> Dict[str, Any]:
             
             # Prepare files for form-data
             files = [
-                ('files', ('channel_data.json', open(json_path, 'rb'), 'application/json')),
-                ('files', ('avatar.jpg', open(avatar_path, 'rb'), 'image/jpeg')),
-                ('files', ('banner.jpg', open(banner_path, 'rb'), 'image/jpeg'))
+                ('files', ('channel_data.json', open(json_path, 'rb'), 'application/json'))
             ]
+            
+            # Add avatar if exists
+            if channel.get("avatarPath"):
+                files.append(('files', ('avatar.jpg', open(channel["avatarPath"], 'rb'), 'image/jpeg')))
+            
+            # Add banner if exists
+            if channel.get("bannerPath"):
+                files.append(('files', ('banner.jpg', open(channel["bannerPath"], 'rb'), 'image/jpeg')))
             
             # Prepare data
             data = {
@@ -67,6 +71,67 @@ def send_to_crawler(detailed_channels: List[Dict[str, Any]]) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Error sending data for channel {channel_id}: {str(e)}")
             results["failed"].append(channel_id)
+            
+    return results
+
+def send_video_to_data_controller(detailed_videos: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Send crawled video data to crawler API.
+    
+    Args:
+        detailed_videos (List[Dict[str, Any]]): List of video data containing paths
+        
+    Returns:
+        Dict[str, Any]: Result containing success and failed videos
+    """
+    results = {
+        "success": [],
+        "failed": []
+    }
+    
+    for video in detailed_videos:
+        try:
+            video_id = video["videoId"]
+            thumbnail_path = video["thumbnailPath"]
+            json_path = video["jsonPath"]
+            
+            if not all([thumbnail_path, json_path]):
+                logger.error(f"Missing required paths for video {video_id}")
+                results["failed"].append(video_id)
+                continue
+                
+            # API endpoint
+            url = "http://localhost:8080/api/upload/multiple"
+            
+            # Prepare files for form-data
+            files = [
+                ('files', ('video_data.json', open(json_path, 'rb'), 'application/json')),
+                ('files', ('thumbnail.jpg', open(thumbnail_path, 'rb'), 'image/jpeg'))
+            ]
+            
+            # Prepare data
+            data = {
+                'data': 'YOUTUBE_VIDEO_INFO'
+            }
+            
+            # Send request
+            response = requests.post(url, files=files, data=data)
+            
+            # Close file handles
+            for _, file_tuple in files:
+                file_tuple[1].close()
+            
+            # Check response
+            if response.status_code == 200:
+                logger.info(f"Successfully sent data for video {video_id}")
+                results["success"].append(video_id)
+            else:
+                logger.error(f"Failed to send data for video {video_id}. Status code: {response.status_code}")
+                logger.error(f"Response: {response.text}")
+                results["failed"].append(video_id)
+                
+        except Exception as e:
+            logger.error(f"Error sending data for video {video_id}: {str(e)}")
+            results["failed"].append(video_id)
             
     return results
 

@@ -1,9 +1,9 @@
 import os
 import sys
 import argparse
-from utils.logger import CustomLogger
-from generate_keywords import generate_and_crawl
-from scripts.reset_quota import main as reset_quota_main
+from src.utils.logger import CustomLogger
+from src.generate_keywords import generate_and_crawl
+from src.scripts.reset_quota import main as reset_quota_main
 
 # Initialize logger
 logger = CustomLogger("main")

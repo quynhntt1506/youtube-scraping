@@ -627,3 +627,144 @@ class YouTubeAPI:
             "comments": comments,
             "quota_usage": quota_usage
         }
+
+    def extract_youtube_id(self, url: str) -> Dict[str, str]:
+        """Extract YouTube IDs from various URL formats.
+        
+        Args:
+            url (str): YouTube URL to parse
+            
+        Returns:
+            Dict[str, str]: Dictionary containing:
+                - type: Type of URL ('channel', 'video', 'playlist', 'custom_url', 'username', 'shorts')
+                - id: Corresponding ID
+                - error: Error message if any
+                
+        Examples:
+            # Channel URLs
+            - https://www.youtube.com/channel/UC...
+            - https://www.youtube.com/c/ChannelName
+            - https://www.youtube.com/@username
+            - https://www.youtube.com/user/username
+            - https://youtube.com/channel/UC...
+            - https://youtube.com/c/ChannelName
+            - https://youtube.com/@username
+            - https://youtube.com/user/username
+            
+            # Video URLs
+            - https://www.youtube.com/watch?v=VIDEO_ID
+            - https://youtube.com/watch?v=VIDEO_ID
+            - https://youtu.be/VIDEO_ID
+            - https://youtube.com/v/VIDEO_ID
+            - https://youtube.com/embed/VIDEO_ID
+            - https://youtube.com/watch?v=VIDEO_ID&t=123s
+            - https://youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID
+            
+            # Shorts URLs
+            - https://youtube.com/shorts/VIDEO_ID
+            - https://www.youtube.com/shorts/VIDEO_ID
+            - https://youtube.com/shorts/VIDEO_ID?feature=share
+            
+            # Playlist URLs
+            - https://www.youtube.com/playlist?list=PLAYLIST_ID
+            - https://youtube.com/playlist?list=PLAYLIST_ID
+            - https://youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID
+            
+            # Live Stream URLs
+            - https://www.youtube.com/live/VIDEO_ID
+            - https://youtube.com/live/VIDEO_ID
+            - https://www.youtube.com/watch?v=VIDEO_ID&feature=share
+        """
+        import re
+        from urllib.parse import urlparse, parse_qs
+        
+        result = {
+            "type": None,
+            "id": None,
+            "error": None
+        }
+        
+        try:
+            # Handle youtu.be short URLs
+            if "youtu.be" in url:
+                video_id = url.split("/")[-1].split("?")[0]
+                result["type"] = "video"
+                result["id"] = video_id
+                return result
+                
+            # Parse URL
+            parsed_url = urlparse(url)
+            path = parsed_url.path.strip("/")
+            query = parse_qs(parsed_url.query)
+            
+            # Handle shorts URLs
+            if "shorts" in path:
+                result["type"] = "shorts"
+                result["id"] = path.split("/")[1].split("?")[0]
+                return result
+                
+            # Handle live stream URLs
+            if "live" in path:
+                result["type"] = "video"
+                result["id"] = path.split("/")[1].split("?")[0]
+                return result
+                
+            # Handle video URLs
+            if "watch" in path:
+                if "v" in query:
+                    result["type"] = "video"
+                    result["id"] = query["v"][0]
+                    
+                    # Check if it's also a playlist
+                    if "list" in query:
+                        result["playlist_id"] = query["list"][0]
+                    return result
+                    
+            # Handle embed URLs
+            if "embed" in path:
+                result["type"] = "video"
+                result["id"] = path.split("/")[1].split("?")[0]
+                return result
+                
+            # Handle v/ URLs
+            if "v/" in path:
+                result["type"] = "video"
+                result["id"] = path.split("/")[1].split("?")[0]
+                return result
+                
+            # Handle playlist URLs
+            if "playlist" in path and "list" in query:
+                result["type"] = "playlist"
+                result["id"] = query["list"][0]
+                return result
+                
+            # Handle channel URLs
+            if path.startswith("channel/"):
+                result["type"] = "channel"
+                result["id"] = path.split("/")[1]
+                return result
+                
+            # Handle custom URLs
+            if path.startswith("c/"):
+                result["type"] = "custom_url"
+                result["id"] = path.split("/")[1]
+                return result
+                
+            # Handle @username URLs
+            if path.startswith("@") or path.startswith("user/"):
+                username = path.split("/")[0]
+                if username.startswith("@"):
+                    result["type"] = "username"
+                    result["id"] = username[1:]  # Remove @ symbol
+                else:
+                    result["type"] = "username"
+                    result["id"] = username
+                return result
+                
+            # If no pattern matches
+            result["error"] = "Invalid or unsupported YouTube URL format"
+            return result
+            
+        except Exception as e:
+            result["error"] = f"Error parsing URL: {str(e)}"
+            return result

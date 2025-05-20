@@ -1,9 +1,9 @@
+import re
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
 from bson import ObjectId
 from src.utils.common import convert_to_datetime, format_datetime_to_iso
-import re
 from src.config.config import STATUS_ENTITY
 
 class Channel(BaseModel):
