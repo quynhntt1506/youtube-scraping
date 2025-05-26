@@ -163,6 +163,12 @@ def crawl_video_by_ids(video_ids: List[str]) -> Dict[str, Any]:
         # Save each channel's data to a separate JSON file
         for video in image_result["updated_videos"]:
             video_id = video["videoId"]
+            # crawl comments
+            comment_result = api.get_video_comments(video_id)
+            if (comment_result): 
+                video["comments"] = comment_result["comments"]
+            else:
+                video["comments"] = []
             json_path = get_path_file_json("video", video_id)
             video["jsonPath"] = str(json_path)
             with open(json_path, "w", encoding="utf-8") as f:

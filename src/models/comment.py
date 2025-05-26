@@ -75,7 +75,7 @@ class Reply(BaseModel):
     )
     
     id: Optional[ObjectId] = Field(default=None, alias="_id")
-    replyId: str
+    commentId: str
     authorDisplayName: str
     authorProfileImageUrl: Optional[str] = None
     authorChannelId: Optional[str] = None
@@ -92,7 +92,7 @@ class Reply(BaseModel):
         snippet = item.get("snippet", {})
         
         return cls(
-            replyId=item.get("id", ""),
+            commentId=item.get("id", ""),
             authorDisplayName=snippet.get("authorDisplayName", ""),
             authorProfileImageUrl=snippet.get("authorProfileImageUrl"),
             authorChannelId=snippet.get("authorChannelId", {}).get("value"),

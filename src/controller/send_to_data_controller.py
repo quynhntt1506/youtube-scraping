@@ -36,16 +36,16 @@ def send_channel_to_data_controller(detailed_channels: List[Dict[str, Any]]) -> 
             
             # Prepare files for form-data
             files = [
-                ('files', ('channel_data.json', open(json_path, 'rb'), 'application/json'))
+                ('files', (f'{channel_id}.json', open(json_path, 'rb'), 'application/json'))
             ]
             
             # Add avatar if exists
             if channel.get("avatarPath"):
-                files.append(('files', ('avatar.jpg', open(channel["avatarPath"], 'rb'), 'image/jpeg')))
+                files.append(('files', (f'{channel_id}_avatar.jpg', open(channel["avatarPath"], 'rb'), 'image/jpeg')))
             
             # Add banner if exists
             if channel.get("bannerPath"):
-                files.append(('files', ('banner.jpg', open(channel["bannerPath"], 'rb'), 'image/jpeg')))
+                files.append(('files', (f'{channel_id}_banner.jpg', open(channel["bannerPath"], 'rb'), 'image/jpeg')))
             
             # Prepare data
             data = {
@@ -104,8 +104,8 @@ def send_video_to_data_controller(detailed_videos: List[Dict[str, Any]]) -> Dict
             
             # Prepare files for form-data
             files = [
-                ('files', ('video_data.json', open(json_path, 'rb'), 'application/json')),
-                ('files', ('thumbnail.jpg', open(thumbnail_path, 'rb'), 'image/jpeg'))
+                ('files', (f'{video_id}.json', open(json_path, 'rb'), 'application/json')),
+                ('files', (f'{video_id}_thumbnail.jpg', open(thumbnail_path, 'rb'), 'image/jpeg'))
             ]
             
             # Prepare data

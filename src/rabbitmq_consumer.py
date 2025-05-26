@@ -8,7 +8,7 @@ from src.controller.send_to_data_controller import *
 logger = CustomLogger("rabbitmq_consumer")
 
 class RabbitMQConsumer:
-    def __init__(self, host: str = 'localhost', queue_name: str = 'youtube.channel.info.crawler.queue'):
+    def __init__(self, host: str = 'localhost', queue_name: str = 'youtube.video.info.crawler.queue'):
         """Initialize RabbitMQ consumer.
         
         Args:
