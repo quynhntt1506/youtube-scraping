@@ -2,6 +2,7 @@ import googleapiclient.discovery
 import googleapiclient.errors
 import requests
 import json
+import time
 from typing import List, Optional, Any, Dict
 from datetime import datetime
 from pathlib import Path
@@ -517,6 +518,10 @@ class YouTubeAPI:
         for i in range(0, len(video_ids), MAX_ID_PAYLOAD):
             batch_ids = video_ids[i:i+MAX_ID_PAYLOAD]
             try:
+                # Add delay between API calls
+                if i > 0:  # Skip delay for first batch
+                    time.sleep(1)  # Sleep for 2 seconds
+                    
                 request = self.youtube.videos().list(
                     part="snippet,statistics,contentDetails,topicDetails,status",
                     id=",".join(batch_ids)

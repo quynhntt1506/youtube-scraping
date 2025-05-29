@@ -1,8 +1,36 @@
 from pymongo import MongoClient
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Callable
 from datetime import datetime
+import time
+from functools import wraps
 from src.config.config import MONGODB_URI, MONGODB_DB, MONGODB_COLLECTIONS, STATUS_ENTITY
 import pymongo
+
+def retry_mongodb_operation(max_retries: int = 3, delay: float = 1.0):
+    """Decorator to retry MongoDB operations on failure.
+    
+    Args:
+        max_retries (int): Maximum number of retry attempts
+        delay (float): Delay between retries in seconds
+    """
+    def decorator(func: Callable):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except (pymongo.errors.ConnectionFailure, 
+                        pymongo.errors.ServerSelectionTimeoutError,
+                        pymongo.errors.OperationFailure) as e:
+                    last_exception = e
+                    if attempt < max_retries - 1:
+                        time.sleep(delay * (attempt + 1))  # Exponential backoff
+                        continue
+                    raise last_exception
+            return None
+        return wrapper
+    return decorator
 
 class Database:
     def __init__(self):
@@ -13,24 +41,29 @@ class Database:
             for name, collection in MONGODB_COLLECTIONS.items()
         }
 
+    @retry_mongodb_operation()
     def channel_exists(self, channel_id: str) -> bool:
         """Check if a channel exists in the database."""
         return bool(self.collections["channels"].find_one({"channelId": channel_id}))
 
+    @retry_mongodb_operation()
     def video_exists(self, video_id: str) -> bool:
         """Check if a video exists in the database."""
         return bool(self.collections["videos"].find_one({"videoId": video_id}))
 
+    @retry_mongodb_operation()
     def insert_channel(self, channel_data: Dict[str, Any]) -> None:
         """Insert a channel document if it doesn't exist."""
         if not self.channel_exists(channel_data["channelId"]):
             self.collections["channels"].insert_one(channel_data)
 
+    @retry_mongodb_operation()
     def insert_video(self, video_data: Dict[str, Any]) -> None:
         """Insert a video document if it doesn't exist."""
         if not self.video_exists(video_data["videoId"]):
             self.collections["videos"].insert_one(video_data)
 
+    @retry_mongodb_operation()
     def update_many_keywords(self, keywords_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Update or insert multiple keywords data in a single operation.
         
@@ -129,6 +162,7 @@ class Database:
         """Close MongoDB connection."""
         self.client.close()
 
+    @retry_mongodb_operation()
     def insert_many_videos(self, videos: List[dict]) -> Dict[str, Any]:
         """Insert multiple videos into database using update_many with upsert.
         Duplicate videos will be automatically handled by MongoDB.
@@ -194,6 +228,7 @@ class Database:
             print(f"❌ Error processing videos: {str(e)}")
             raise
 
+    @retry_mongodb_operation()
     def insert_many_comments(self, comments: List[dict]) -> Dict[str, Any]:
         """Insert multiple comments into database using update_many with upsert.
         Duplicate comments will be automatically handled by MongoDB.
@@ -275,6 +310,7 @@ class Database:
                 "errors": [error_msg]
             }
 
+    @retry_mongodb_operation()
     def add_many_keyword_usage(self, api_key: str, keywords_data: List[Dict[str, Any]]) -> None:
         """Add multiple keyword usage history to api_key's used_history array.
         
@@ -337,6 +373,7 @@ class Database:
             print(f"❌ Error adding keyword usage history: {str(e)}")
             raise
 
+    @retry_mongodb_operation()
     def insert_many_channels(self, channels: List[dict]) -> Dict[str, Any]:
         """Insert multiple channels into database using update_many with upsert.
         Duplicate channels will be automatically handled by MongoDB.
@@ -399,6 +436,7 @@ class Database:
             print(f"❌ Error processing channels: {str(e)}")
             raise
 
+    @retry_mongodb_operation()
     def get_keyword_by_keyword(self, keyword: str) -> Dict[str, Any]:
         """Get keyword document from youtube_keywords collection.
         
@@ -410,6 +448,7 @@ class Database:
         """
         return self.collections["youtube_keywords"].find_one({"keyword": keyword})
 
+    @retry_mongodb_operation()
     def update_keyword_status(self, keyword: str, status: str) -> bool:
         """Update status of a keyword in youtube_keywords collection.
         
@@ -435,6 +474,7 @@ class Database:
         
         return result.modified_count > 0 
 
+    @retry_mongodb_operation()
     def update_channels_status_by_playlist_ids(self, playlist_ids: List[str]) -> Dict[str, Any]:
         """Update status of channels that have the given playlist IDs to 'crawled_video'.
         
@@ -503,6 +543,7 @@ class Database:
                 "not_found_playlist_ids": playlist_ids
             }
 
+    @retry_mongodb_operation()
     def update_videos_status_by_video_ids(self, video_ids: List[str]) -> Dict[str, Any]:
         """Update status of videos that have the given video IDs to 'crawled_comment'.
         

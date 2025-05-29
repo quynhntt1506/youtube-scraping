@@ -54,6 +54,7 @@ def crawl_channel_by_id(channel_ids: List[str]) -> Dict[str, Any]:
             logger.info(f"Saved channel data to {json_path}")
             if channel:
                 send_channel_to_data_controller([channel])
+                crawl_videos_in_playlist(channel["playlistId"])
             all_detaled_channels.append(channel)
 
         result_db = db.insert_many_channels(all_detaled_channels)
@@ -80,6 +81,10 @@ def crawl_channel_by_custom_urls(custom_urls: List[str]) -> Dict[str, Any]:
             channel_id = channel["channelId"]
             json_path = get_path_file_json("channel", channel_id)
             channel["jsonPath"] = str(json_path)
+            channel["photoInfos"] = {
+                f"{channel_id.lower()}_avatar.jpg": channel.get("avatarUrl", ""),
+                f"{channel_id.lower()}_banner.jpg": channel.get("bannerUrl", ""),
+            }
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(channel, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
             logger.info(f"Saved channel data to {json_path}")
@@ -169,6 +174,12 @@ def crawl_video_by_ids(video_ids: List[str]) -> Dict[str, Any]:
                 video["comments"] = comment_result["comments"]
             else:
                 video["comments"] = []
+                
+            # Add photoInfos
+            video["photoInfos"] = {
+                f"{video_id.lower()}_thumbnail.jpg": video.get("thumbnailUrl", "")
+            }
+            print(video["photoInfos"])
             json_path = get_path_file_json("video", video_id)
             video["jsonPath"] = str(json_path)
             with open(json_path, "w", encoding="utf-8") as f:
@@ -184,6 +195,31 @@ def crawl_video_by_ids(video_ids: List[str]) -> Dict[str, Any]:
         }
     finally:
         db.close()
+
+def crawl_video_by_urls(video_urls: List[str]) -> Dict[str, Any]:
+    """Crawl video by url."""
+    api = YouTubeAPI()
+    db = Database()
+
+    for video_url in video_urls:
+        extract_url = api.extract_youtube_id(video_url)
+        video_ids = []
+        playlist_ids = []
+        match extract_url["type"]:
+            case "video" | "shorts":
+                video_ids.append(extract_url["id"])
+            case "playlist":
+                playlist_ids.append(extract_url["id"])
+            case _:
+                logger.error(f"Invalid video url: {video_url}")
+        
+        if video_ids:
+            result_crawl = crawl_video_by_ids(video_ids)
+            logger.info(f"Crawled {len(result_crawl["new_videos"])} videos from url_ids")
+        if playlist_ids:
+            for playlist_id in playlist_ids:
+                result_crawl = crawl_videos_in_playlist(playlist_id)
+                logger.info(f"Crawled {len(result_crawl["videos"])} videos from playlist_ids")
 
 def crawl_videos_in_playlist(playlist_id: str) -> Dict[str, Any]:
     """Crawl videos from a playlist."""
