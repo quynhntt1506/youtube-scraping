@@ -2,6 +2,7 @@ import googleapiclient.discovery
 import googleapiclient.errors
 import requests
 import json
+import time
 from typing import List, Optional, Any, Dict
 from datetime import datetime
 from pathlib import Path
@@ -127,6 +128,7 @@ class YouTubeAPI:
                 )
                 
                 self.call_count += 1
+                time.sleep(1)  # Add 1 second delay before API call
                 response = request.execute()
                 all_responses.append(response)
                 
@@ -187,6 +189,7 @@ class YouTubeAPI:
                     part="snippet,statistics,topicDetails,brandingSettings,contentDetails",
                     id=",".join(batch_ids)
                 )
+                time.sleep(1)  # Add 1 second delay before API call
                 response = request.execute()
                 all_responses.append(response)
                 
@@ -333,6 +336,7 @@ class YouTubeAPI:
                             pageToken=next_page_token
                         )
                         
+                        time.sleep(1)  # Add 1 second delay before API call
                         response = request.execute()
                         all_responses.append(response)
                         
@@ -395,6 +399,7 @@ class YouTubeAPI:
                     part="snippet,statistics,contentDetails,topicDetails,status",
                     id=",".join(batch_ids)
                 )
+                time.sleep(1)  # Add 1 second delay before API call
                 response = request.execute()
                 all_responses.append(response)
                 
@@ -448,6 +453,7 @@ class YouTubeAPI:
                         maxResults=100,  # Maximum allowed by YouTube API
                         pageToken=next_page_token
                     )
+                    time.sleep(1)  # Add 1 second delay before API call
                     response = request.execute()
                     all_responses.append(response)
                     

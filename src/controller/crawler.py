@@ -90,6 +90,8 @@ def crawl_videos_from_channels(channels: List[dict]) -> Dict[str, Any]:
         # Get playlist IDs
         playlist_ids = [c["playlistId"] for c in channels if c.get("playlistId")]
         videos = []
+        quota_usage = 0  # Initialize quota_usage
+        
         # Get videos from playlists
         for i in range(0, len(playlist_ids), MIN_ENTITY_IN_BATCH):
             batch_playlist_ids = playlist_ids[i:i+MIN_ENTITY_IN_BATCH]
@@ -104,11 +106,11 @@ def crawl_videos_from_channels(channels: List[dict]) -> Dict[str, Any]:
             
             # Update quota usage to db 
             playlist_quota = update_quota_usage(playlist_result["quota_usage"])
+            quota_usage += playlist_quota
         
         # Get video details and process in batches of 50
         all_videos = []
         all_video_ids = []
-        quota_usage = playlist_quota
         
         for i in range(0, len(videos), MAX_ENTITY_IN_BATCH):
             batch_videos = videos[i:i+MAX_ENTITY_IN_BATCH]
@@ -272,3 +274,125 @@ def crawl_video_in_channel_by_many_keywords(keywords: list[str]):
                     logger.info(f"Updated status of keyword {keyword} to 'crawled'")
                 else:
                     logger.warning(f"Keyword {keyword} not found in database or has invalid status")
+
+def crawl_videos_from_crawled_channels(batch_size: int = MIN_ENTITY_IN_BATCH) -> Dict[str, Any]:
+    """Crawl videos from channels with status crawled_channel.
+    
+    Args:
+        batch_size (int): Number of channels to process in each batch
+        
+    Returns:
+        Dict[str, Any]: Result containing:
+            - total_channels: Total number of channels processed
+            - total_videos: Total number of videos crawled
+            - total_comments: Total number of comments crawled
+            - errors: List of errors encountered
+    """
+    db = Database()
+    
+    try:
+        # Find channels with status crawled_channel
+        channels = db.collections["channels"].find(
+            {"status": "crawled_channel"},
+            {"channelId": 1, "playlistId": 1}
+        ).limit(batch_size)
+        
+        channels = list(channels)
+        if not channels:
+            logger.info("No channels with status crawled_channel found")
+            return {
+                "total_channels": 0,
+                "total_videos": 0,
+                "total_comments": 0,
+                "errors": []
+            }
+        
+        total_videos = 0
+        total_comments = 0
+        errors = []
+        
+        video_result = crawl_videos_from_channels(channels)
+        if video_result:
+            total_videos += len(video_result.get("videos", []))
+            # Crawl comments from videos
+            video_ids = [v["videoId"] for v in video_result.get("videos", [])]
+            if video_ids:
+                comment_result = crawl_comments_from_videos(video_ids)
+                if comment_result:
+                    total_comments += len(comment_result.get("comments", []))
+                
+        logger.info(f"Crawled {len(channels)} channels, {total_videos} videos, {total_comments} comments")
+        return {
+            "total_channels": len(channels),
+            "total_videos": total_videos,
+            "total_comments": total_comments,
+            "errors": errors
+        }
+        
+    except Exception as e:
+        error_msg = f"Error in crawl_videos_from_crawled_channels: {str(e)}"
+        logger.error(error_msg)
+        return {
+            "total_channels": 0,
+            "total_videos": 0,
+            "total_comments": 0,
+            "errors": [error_msg]
+        }
+    finally:
+        db.close()
+
+def crawl_comments_from_crawled_videos(batch_size: int = MIN_ENTITY_IN_BATCH) -> Dict[str, Any]:
+    """Crawl videos from channels with status crawled_channel.
+    
+    Args:
+        batch_size (int): Number of channels to process in each batch
+        
+    Returns:
+        Dict[str, Any]: Result containing:
+            - total_channels: Total number of channels processed
+            - total_videos: Total number of videos crawled
+            - total_comments: Total number of comments crawled
+            - errors: List of errors encountered
+    """
+    db = Database()
+    
+    try:
+        # Find channels with status crawled_channel
+        videos = db.collections["videos"].find(
+            {"status": "crawled_video"},
+            {"videoId": 1}
+        ).limit(batch_size)
+        
+        videos = list(videos)
+        if not videos:
+            logger.info("No channels with status crawled_channel found")
+            return {
+                "total_videos": 0,
+                "total_comments": 0,
+                "errors": []
+            }
+        
+        total_comments = 0
+        errors = []
+        
+        video_ids = [v["videoId"] for v in videos]
+        comment_result = crawl_comments_from_videos(video_ids)
+        if comment_result:
+            total_comments = len(comment_result["comments"])
+        logger.info(f"Crawled {len(videos)} videos, {total_comments} comments")
+        return {
+            "total_videos": len(videos),
+            "total_comments": total_comments,
+            "errors": errors
+        }
+        
+    except Exception as e:
+        error_msg = f"Error in crawl_videos_from_crawled_channels: {str(e)}"
+        logger.error(error_msg)
+        return {
+            "total_videos": 0,
+            "total_comments": 0,
+            "errors": [error_msg]
+        }
+    finally:
+        db.close()
