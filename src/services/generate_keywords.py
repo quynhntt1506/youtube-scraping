@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
 from utils.logger import CustomLogger
 import time
-
+from src.config.config import COUNT_THREADS_DEFAULT
 # Initialize logger
 logger = CustomLogger("generate_keywords")
 
@@ -40,7 +40,7 @@ def process_keyword(keyword: str):
             
             result = crawl_video_in_channel_by_keyword(keyword)
             if result:
-                logger.info(f"Thread {thread_id}: Crawled {result.get('count_channels')} channels, {result.get('count_videos')} videos, comments for keyword {keyword}")
+                logger.info(f"Thread {thread_id}: Crawled {result.get('count_channels')} channels for keyword {keyword}")
                 db.update_keyword_status(keyword, "crawled")
                 logger.info(f"Thread {thread_id}: Updated status of keyword {keyword} to 'crawled'")
             else:
@@ -62,7 +62,7 @@ def process_keyword(keyword: str):
         duration = end_time - start_time
         logger.info(f"Thread {thread_id} ({thread_name}) finished processing keyword: {keyword} at {time.strftime('%H:%M:%S')} (took {duration:.2f} seconds)")
 
-def generate_and_crawl(num_keywords: int = 1, max_workers: int = 5):
+def generate_and_crawl(num_keywords: int = 1, max_workers: int = COUNT_THREADS_DEFAULT):
     """Generate Vietnamese keywords and start crawling process with threading.
     
     Args:

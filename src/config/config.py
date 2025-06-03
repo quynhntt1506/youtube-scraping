@@ -5,7 +5,7 @@ from pathlib import Path
 MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0')
 MONGODB_DB = os.getenv('MONGODB_DB', 'youtube_data')
 # MONGODB_URI = 'mongodb://localhost:27017/'
-
+# MONGODB_DB = 'youtube_crawl_test'
 
 
 # Define base directories
@@ -29,7 +29,7 @@ for directory in DIRECTORIES.values():
 
 # API configuration
 MAX_CHANNELS = 500
-MIN_ENTITY_IN_BATCH = 50
+MIN_ENTITY_IN_BATCH = 25
 MAX_ENTITY_IN_BATCH = 100
 MAX_RESULTS_PER_PAGE = 50
 MAX_ID_PAYLOAD = 50
@@ -37,6 +37,7 @@ MAX_FILES_PER_FOLDER = 5000
 COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY = 100
 MAX_RETRIES = 3
 RETRY_DELAY = 1  # seconds
+COUNT_THREADS_DEFAULT = 5
 
 # Logging configuration
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

@@ -2,9 +2,11 @@ import os
 import sys
 import argparse
 from utils.logger import CustomLogger
-from generate_keywords import generate_and_crawl
+from src.services.generate_keywords import generate_and_crawl
 from scripts.reset_quota import main as reset_quota_main
-from src.controller.crawler import crawl_videos_from_crawled_channels, crawl_comments_from_crawled_videos
+# from src.controller.crawler import crawl_videos_from_crawled_channels, crawl_comments_from_crawled_videos
+from src.services.comment_crawler_service import start_comment_crawler
+from src.services.video_crawler_service import start_video_crawler
 
 # Initialize logger
 logger = CustomLogger("main")
@@ -16,7 +18,7 @@ def main():
     parser.add_argument('--num-keywords', type=int, default=1,
                       help='Number of keywords to generate (only for crawl-data service)')
     parser.add_argument('--max-workers', type=int, default=5,
-                      help='Maximum number of worker threads (only for crawl-data service)')
+                      help='Maximum number of worker threads')
     
     args = parser.parse_args()
     
@@ -29,10 +31,10 @@ def main():
             reset_quota_main()
         elif args.service == 'crawl-video':
             logger.info("Starting crawl-video service...")
-            crawl_videos_from_crawled_channels()
+            start_video_crawler(args.max_workers)
         elif args.service == 'crawl-comment':
             logger.info("Starting crawl-comment service...")
-            crawl_comments_from_crawled_videos()
+            start_comment_crawler(args.max_workers)
     except KeyboardInterrupt:
         logger.info("Service stopped by user")
     except Exception as e:
