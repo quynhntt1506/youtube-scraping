@@ -1,7 +1,7 @@
 from pymongo import MongoClient
 from typing import Dict, Any, List
 from datetime import datetime
-from config.config import MONGODB_URI, MONGODB_DB, MONGODB_COLLECTIONS, STATUS_ENTITY
+from src.config.config import MONGODB_URI, MONGODB_DB, MONGODB_COLLECTIONS, STATUS_ENTITY
 import pymongo
 
 class Database:

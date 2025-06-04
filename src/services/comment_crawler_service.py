@@ -96,29 +96,28 @@ class CommentCrawlerService:
             logger.info(f"Starting comment crawler with {self.num_threads} threads")
             
             with ThreadPoolExecutor(max_workers=self.num_threads) as executor:
-                futures = []
-                
                 while True:
-                    # Find videos with status crawled_video using skip for pagination
+                    # Query a small batch of videos
                     videos = self.db.collections["videos"].find(
                         {"status": "crawled_video"},
                         {"videoId": 1}
-                    ).skip(skip).limit(MAX_ENTITY_IN_BATCH)
+                    ).skip(skip).limit(self.batch_size)
                     
                     videos = list(videos)
                     if not videos:
                         logger.info("No more videos with status crawled_video found")
                         break
                     
-                    # Calculate batch size for each thread
+                    # Calculate videos per thread for this batch
                     total_videos = len(videos)
                     videos_per_thread = total_videos // self.num_threads
                     remaining_videos = total_videos % self.num_threads
                     
-                    logger.info(f"Found {total_videos} videos, distributing {videos_per_thread} videos per thread")
+                    logger.info(f"Found {total_videos} videos in current batch, distributing {videos_per_thread} videos per thread")
                     
                     # Distribute videos among threads
                     start_idx = 0
+                    futures = []
                     for i in range(self.num_threads):
                         # Add extra video to first few threads if there are remaining videos
                         batch_size = videos_per_thread + (1 if i < remaining_videos else 0)
@@ -131,18 +130,23 @@ class CommentCrawlerService:
                             future = executor.submit(self.process_batch, batch_videos)
                             futures.append(future)
                             start_idx = end_idx
+                    
+                    # Wait for all futures in this batch to complete
+                    for future in as_completed(futures):
+                        try:
+                            result = self.result_queue.get()
+                            total_videos_processed += result["videos_processed"]
+                            total_comments += result["comments"]
+                            if result["error"]:
+                                errors.append(result["error"])
+                        except Exception as e:
+                            errors.append(str(e))
+                    
+                    # Update skip for next batch
                     skip += total_videos
-                
-                # Wait for all futures to complete and collect results
-                for future in as_completed(futures):
-                    try:
-                        result = self.result_queue.get()
-                        total_videos_processed += result["videos_processed"]
-                        total_comments += result["comments"]
-                        if result["error"]:
-                            errors.append(result["error"])
-                    except Exception as e:
-                        errors.append(str(e))
+                    
+                    # Log progress
+                    logger.info(f"Completed batch. Total progress: {total_videos_processed} videos, {total_comments} comments")
             
             logger.info(f"Finished crawling comments. Total videos processed: {total_videos_processed}, Total comments: {total_comments}")
             return {

@@ -95,29 +95,28 @@ class VideoCrawlerService:
             logger.info(f"Starting video crawler with {self.num_threads} threads")
             
             with ThreadPoolExecutor(max_workers=self.num_threads) as executor:
-                futures = []
-                
                 while True:
-                    # Find channels with status crawled_channel using skip for pagination
+                    # Query a small batch of channels
                     channels = self.db.collections["channels"].find(
                         {"status": "crawled_channel"},
                         {"channelId": 1, "playlistId": 1}
-                    ).skip(skip).limit(MAX_ENTITY_IN_BATCH)
+                    ).skip(skip).limit(self.batch_size)
                     
                     channels = list(channels)
                     if not channels:
                         logger.info("No more channels with status crawled_channel found")
                         break
                     
-                    # Calculate batch size for each thread
+                    # Calculate channels per thread for this batch
                     total_channels = len(channels)
                     channels_per_thread = total_channels // self.num_threads
                     remaining_channels = total_channels % self.num_threads
                     
-                    logger.info(f"Found {total_channels} channels, distributing {channels_per_thread} channels per thread")
+                    logger.info(f"Found {total_channels} channels in current batch, distributing {channels_per_thread} channels per thread")
                     
                     # Distribute channels among threads
                     start_idx = 0
+                    futures = []
                     for i in range(self.num_threads):
                         # Add extra channel to first few threads if there are remaining channels
                         batch_size = channels_per_thread + (1 if i < remaining_channels else 0)
@@ -125,23 +124,28 @@ class VideoCrawlerService:
                         
                         if start_idx < total_channels:
                             batch_channels = channels[start_idx:end_idx]
-                            logger.info(f"Submitting batch of {len(batch_channels)} channels to thread {i+1}")
+                            channel_ids = [c["channelId"] for c in batch_channels]
+                            logger.info(f"Submitting batch of {len(batch_channels)} channels to thread {i+1}: {channel_ids}")
                             future = executor.submit(self.process_batch, batch_channels)
                             futures.append(future)
                             start_idx = end_idx
                     
+                    # Wait for all futures in this batch to complete
+                    for future in as_completed(futures):
+                        try:
+                            result = self.result_queue.get()
+                            total_channels_processed += result["channels_processed"]
+                            total_videos += result["videos"]
+                            if result["error"]:
+                                errors.append(result["error"])
+                        except Exception as e:
+                            errors.append(str(e))
+                    
+                    # Update skip for next batch
                     skip += total_channels
-                
-                # Wait for all futures to complete and collect results
-                for future in as_completed(futures):
-                    try:
-                        result = self.result_queue.get()
-                        total_channels_processed += result["channels_processed"]
-                        total_videos += result["videos"]
-                        if result["error"]:
-                            errors.append(result["error"])
-                    except Exception as e:
-                        errors.append(str(e))
+                    
+                    # Log progress
+                    logger.info(f"Completed batch. Total progress: {total_channels_processed} channels, {total_videos} videos")
             
             logger.info(f"Finished crawling videos. Total channels processed: {total_channels_processed}, Total videos: {total_videos}")
             return {
