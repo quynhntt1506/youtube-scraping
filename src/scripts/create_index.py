@@ -17,7 +17,7 @@ def create_indexes():
         db.collections["channels"].create_index(
             [('channelId', ASCENDING)], 
             unique=True, 
-            background=False,
+            background=True,
             sparse=True  # Chỉ index các document có field channelId
         )
         logger.info("Successfully created unique index on channelId")
@@ -25,7 +25,7 @@ def create_indexes():
         logger.info("Creating text index on name and description...")
         db.collections["channels"].create_index(
             [('name', TEXT), ('description', TEXT)], 
-            background=False,
+            background=True,
             weights={'name': 10, 'description': 5}  # Ưu tiên tìm kiếm theo name hơn description
         )
         logger.info("Successfully created text index on name and description")

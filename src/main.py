@@ -7,13 +7,15 @@ from scripts.reset_quota import main as reset_quota_main
 # from src.controller.crawler import crawl_videos_from_crawled_channels, crawl_comments_from_crawled_videos
 from src.services.comment_crawler_service import start_comment_crawler
 from src.services.video_crawler_service import start_video_crawler
+from src.scripts.create_index import create_indexes
+from src.scripts.drop_indexes import drop_indexes
 
 # Initialize logger
 logger = CustomLogger("main")
 
 def main():
     parser = argparse.ArgumentParser(description='YouTube Crawler Service')
-    parser.add_argument('--service', type=str, required=True, choices=['crawl-data', 'reset-quota', 'crawl-video', 'crawl-comment'],
+    parser.add_argument('--service', type=str, required=True, choices=['crawl-data', 'reset-quota', 'crawl-video', 'crawl-comment', 'create-index', 'drop-index'],
                       help='Service to run: crawl-data or reset-quota')
     parser.add_argument('--num-keywords', type=int, default=1,
                       help='Number of keywords to generate (only for crawl-data service)')
@@ -35,6 +37,12 @@ def main():
         elif args.service == 'crawl-comment':
             logger.info("Starting crawl-comment service...")
             start_comment_crawler(args.max_workers)
+        elif args.service == 'create-index' :
+            logger.info("Starting create index...")
+            create_indexes()
+        elif args.service == 'drop-index' :
+            logger.info("Starting drop index...")
+            drop_indexes()
     except KeyboardInterrupt:
         logger.info("Service stopped by user")
     except Exception as e:

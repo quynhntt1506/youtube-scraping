@@ -66,4 +66,6 @@ MONGODB_COLLECTIONS = {
     "api_keys": "youtube_api_keys",
     "youtube_keywords": "youtube_keywords",
     "comments": "youtube_comments",
+
+    "channels_test": "channels"
 }
