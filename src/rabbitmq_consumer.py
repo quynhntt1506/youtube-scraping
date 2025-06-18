@@ -8,7 +8,7 @@ from src.controller.send_to_data_controller import *
 logger = CustomLogger("rabbitmq_consumer")
 
 class RabbitMQConsumer:
-    def __init__(self, host: str = 'localhost', queues: List[str] = None):
+    def __init__(self, host: str = '192.168.132.250', queues: List[str] = None):
         """Initialize RabbitMQ consumer.
         
         Args:
@@ -67,11 +67,11 @@ class RabbitMQConsumer:
                 
                 if channel_id:
                     self.logger.info(f"Processing channel: {channel_id}")
-                    result = crawl_channel_by_id(channel_id)
+                    result = crawl_channel_by_id([channel_id])
                     self.logger.info(f"Crawled channel {channel_id}")
                 elif custom_urls:
                     self.logger.info(f"Processing custom_urls: {custom_urls}")
-                    result = crawl_channel_by_custom_urls(custom_urls)
+                    result = crawl_channel_by_custom_urls([custom_urls])
                     self.logger.info(f"Crawled channel {custom_urls}")
                     
             elif action == "VIDEO_INFO":
@@ -83,7 +83,7 @@ class RabbitMQConsumer:
                     return
                 if video_id:
                     self.logger.info(f"Processing video: {video_id}")
-                    result = crawl_video_by_ids(video_id)
+                    result = crawl_video_by_ids([video_id])
                     self.logger.info(f"Crawled video {video_id}")
                 elif url:
                     self.logger.info(f"Processing video: {url}")

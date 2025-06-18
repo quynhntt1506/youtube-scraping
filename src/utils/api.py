@@ -178,44 +178,62 @@ class YouTubeAPI:
 
     def get_channel_detail_by_ids(self, channel_ids: List[str]) -> Dict[str, Any]:
         """Get detailed information for multiple channels."""
+        print(channel_ids)
         detailed_channels = []
         quota_usage = {}
         all_responses = []
         
         for i in range(0, len(channel_ids), MAX_ID_PAYLOAD):
             batch_ids = channel_ids[i:i+MAX_ID_PAYLOAD]
-            try:
-                request = self.youtube.channels().list(
-                    part="snippet,statistics,topicDetails,brandingSettings,contentDetails",
-                    id=",".join(batch_ids)
-                )
-                response = request.execute()
-                all_responses.append(response)
-                
-                # Track quota usage
-                quota_usage = self._track_quota(1, quota_usage)
-                
-                for item in response.get("items", []):
-                    try:
-                        channel_info = Channel.from_youtube_response(item)
-                        # Convert to dict and remove _id field if it's None
-                        channel_dict = channel_info.model_dump(by_alias=True)
-                        if channel_dict.get("_id") is None:
-                            channel_dict.pop("_id", None)
-                        detailed_channels.append(channel_dict)
-                    except Exception as e:
-                        self.logger.error(f"Error processing channel {item.get('id')}: {e}")
-                        continue
+            max_retries = len(self.api_keys)  # Try each API key once
+            retry_count = 0
+            
+            while retry_count < max_retries:
+                try:
+                    request = self.youtube.channels().list(
+                        part="snippet,statistics,topicDetails,brandingSettings,contentDetails",
+                        id=",".join(batch_ids)
+                    )
                     
-            except googleapiclient.errors.HttpError as e:
-                self.logger.error(f"API Error getting channel details: {e}")
-                if not self._switch_api_key():
+                    response = request.execute()
+                    print("RESPONSE", response.get("items", []))
+                    all_responses.append(response)
+                    
+                    # Track quota usage
+                    quota_usage = self._track_quota(1, quota_usage)
+                    
+                    for item in response.get("items", []):
+                        try:
+                            channel_info = Channel.from_youtube_response(item)
+                            # Convert to dict and remove _id field if it's None
+                            channel_dict = channel_info.model_dump(by_alias=True)
+                            if channel_dict.get("_id") is None:
+                                channel_dict.pop("_id", None)
+                            detailed_channels.append(channel_dict)
+                        except Exception as e:
+                            self.logger.error(f"Error processing channel {item.get('id')}: {e}")
+                            continue
+                    
+                    # If successful, break the retry loop
                     break
-                continue
-
-        # if detailed_channels:
-        #     self.save_crawl_result_channel(detailed_channels, "channel")
-        print(quota_usage)
+                    
+                except googleapiclient.errors.HttpError as e:
+                    error_details = e.error_details[0]
+                    if error_details.get("reason") == "quotaExceeded":
+                        self.logger.warning(f"Quota exceeded for current API key, switching to next key...")
+                        if not self._switch_api_key():
+                            self.logger.error("No more API keys available")
+                            # return {
+                            #     "detailed_channels": detailed_channels,
+                            #     "quota_usage": quota_usage
+                            # }
+                        retry_count += 1
+                        continue
+                    else:
+                        self.logger.error(f"API Error getting channel details: {e}")
+                        break
+                        
+        # print(quota_usage)
         return {
             "detailed_channels": detailed_channels,
             "quota_usage": quota_usage
@@ -541,10 +559,16 @@ class YouTubeAPI:
                     detailed_videos.append(video_dict)
                     crawled_video_ids.append(video_dict.get("videoId"))
             except googleapiclient.errors.HttpError as e:
-                self.logger.error(f"API Error getting video details: {e}")
-                if not self._switch_api_key():
+                error_details = e.error_details[0]
+                if error_details.get("reason") == "quotaExceeded":
+                    self.logger.warning(f"Quota exceeded for current API key, switching to next key...")
+                    if not self._switch_api_key():
+                        self.logger.error("No more API keys available")
+                    retry_count += 1
+                    continue
+                else:
+                    self.logger.error(f"API Error getting channel details: {e}")
                     break
-                continue
         # if all_responses:
         #     self.save_crawl_result_videos(all_responses, "video")
             

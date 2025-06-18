@@ -2,11 +2,18 @@ import os
 from pathlib import Path
 
 # MongoDB configuration
-# MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0')
-# MONGODB_DB = os.getenv('MONGODB_DB', 'youtube_data')
+MONGODB_URI = 'mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0'
+MONGODB_DB = 'youtube_data'
 
-MONGODB_URI = 'mongodb://localhost:27017/'
-MONGODB_DB = 'youtube_crawl_test'
+# MONGODB_URI = 'mongodb://localhost:27017/'
+# MONGODB_DB = 'youtube_crawl_test'
+
+SFTP_CONFIG = {
+    "hostname": "192.168.132.250",
+    "username": "htsc",
+    "password": "Htsc@123",
+    "remote_base_path": "/home/htsc/crawl-youtube/data-request/images"
+}
 
 
 # Define base directories
