@@ -10,3 +10,5 @@ services:
       - PYTHONPATH=/youtube-crawler-v3
     command: python src/main.py
     restart: unless-stopped
+
+

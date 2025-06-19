@@ -1,0 +1,211 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-config
+data:
+  AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
+  AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  AIRFLOW__API__AUTH_BACKEND: "airflow.api.auth.backend.basic_auth"
+  AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+  MONGODB_URI: "mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0"
+  MONGODB_DB: "youtube_data"
+  PYTHONPATH: "/opt/airflow/youtube-crawler"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: airflow-secret
+type: Opaque
+data:
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: cG9zdGdyZXNxbCtwc3ljb3BnMjovL2FpcmZsb3c6YWlyZmxvd0Bwb3N0Z3Jlcy1kYi9haXJmbG93
+  AIRFLOW__CORE__FERNET_KEY: ""
+  _AIRFLOW_WWW_USER_USERNAME: YWRtaW4=
+  _AIRFLOW_WWW_USER_PASSWORD: YWRtaW4=
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-db
+  template:
+    metadata:
+      labels:
+        app: postgres-db
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:13
+        env:
+        - name: POSTGRES_USER
+          value: "airflow"
+        - name: POSTGRES_PASSWORD
+          value: "airflow"
+        - name: POSTGRES_DB
+          value: "airflow"
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db
+spec:
+  selector:
+    app: postgres-db
+  ports:
+  - port: 5432
+    targetPort: 5432
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-webserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow-webserver
+  template:
+    metadata:
+      labels:
+        app: airflow-webserver
+    spec:
+      containers:
+      - name: airflow-webserver
+        image: apache/airflow:2.8.1
+        command: ["webserver"]
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: airflow-config
+        - secretRef:
+            name: airflow-secret
+        env:
+        - name: _PIP_ADDITIONAL_REQUIREMENTS
+          value: "google-api-python-client==2.108.0 pymongo==4.6.1 requests==2.31.0 pandas==2.1.4 python-dotenv==1.0.0 schedule==1.2.1 pytz==2024.1 aiohttp==3.9.3 paramiko==3.4.0 pydantic==2.6.1"
+        volumeMounts:
+        - name: dags-volume
+          mountPath: /opt/airflow/dags
+        - name: logs-volume
+          mountPath: /opt/airflow/logs
+        - name: plugins-volume
+          mountPath: /opt/airflow/plugins
+        - name: youtube-crawler-volume
+          mountPath: /opt/airflow/youtube-crawler
+      volumes:
+      - name: dags-volume
+        configMap:
+          name: youtube-crawler-dags
+      - name: logs-volume
+        emptyDir: {}
+      - name: plugins-volume
+        emptyDir: {}
+      - name: youtube-crawler-volume
+        configMap:
+          name: youtube-crawler-code
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow-scheduler
+  template:
+    metadata:
+      labels:
+        app: airflow-scheduler
+    spec:
+      containers:
+      - name: airflow-scheduler
+        image: apache/airflow:2.8.1
+        command: ["scheduler"]
+        envFrom:
+        - configMapRef:
+            name: airflow-config
+        - secretRef:
+            name: airflow-secret
+        env:
+        - name: _PIP_ADDITIONAL_REQUIREMENTS
+          value: "google-api-python-client==2.108.0 pymongo==4.6.1 requests==2.31.0 pandas==2.1.4 python-dotenv==1.0.0 schedule==1.2.1 pytz==2024.1 aiohttp==3.9.3 paramiko==3.4.0 pydantic==2.6.1"
+        volumeMounts:
+        - name: dags-volume
+          mountPath: /opt/airflow/dags
+        - name: logs-volume
+          mountPath: /opt/airflow/logs
+        - name: plugins-volume
+          mountPath: /opt/airflow/plugins
+        - name: youtube-crawler-volume
+          mountPath: /opt/airflow/youtube-crawler
+      volumes:
+      - name: dags-volume
+        configMap:
+          name: youtube-crawler-dags
+      - name: logs-volume
+        emptyDir: {}
+      - name: plugins-volume
+        emptyDir: {}
+      - name: youtube-crawler-volume
+        configMap:
+          name: youtube-crawler-code
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-webserver
+spec:
+  selector:
+    app: airflow-webserver
+  ports:
+  - port: 8080
+    targetPort: 8080
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: youtube-crawler-dags
+data:
+  youtube_crawler_dag.py: |
+    # Content of your DAG file will be here
+    # You can copy the content from dags/youtube_crawler_dag.py
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: youtube-crawler-code
+data:
+  # You'll need to add your YouTube crawler code here
+  # This is just an example structure
+  "src/main.py": |
+    # Your main.py content
+  "src/services/generate_keywords.py": |
+    # Your generate_keywords.py content
+  # Add other files as needed 
