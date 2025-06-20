@@ -14,14 +14,6 @@ from src.config.config import DIRECTORIES, MAX_FILES_PER_FOLDER, SFTP_CONFIG
 # Initialize logger
 logger = CustomLogger("thumbnail_downloader")
 
-# SFTP Configuration for Docker environment
-# SFTP_CONFIG = {
-#     "hostname": "192.168.132.250",
-#     "username": "htsc",
-#     "password": "Htsc@123",
-#     "remote_base_path": "home/htsc/crawl-youtube/data-request/images"
-# }
-
 def count_files_in_remote_dir(sftp, remote_dir: str) -> int:
     """Count number of .jpg files in a remote directory using SFTP."""
     try:
@@ -164,21 +156,6 @@ def download_video_thumbnails(videos: list) -> Dict[str, Any]:
         base_dir = DIRECTORIES["thumbnailvideos"]
         logger.info(f"Using local storage path: {base_dir}")
     
-    # Create base directory
-    # if is_docker:
-    #     with paramiko.SSHClient() as ssh:
-    #         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    #         ssh.connect(
-    #             hostname=SFTP_CONFIG["hostname"],
-    #             username=SFTP_CONFIG["username"],
-    #             password=SFTP_CONFIG["password"]
-    #         )
-    #         with ssh.open_sftp() as sftp:
-    #             ensure_remote_dir_exists(sftp, str(base_dir))
-    # else:
-    #     base_dir.mkdir(parents=True, exist_ok=True)
-    
-    
     # Process videos in batches of 100
     for i in range(0, len(videos), 100):
         batch = videos[i:i+100]
@@ -189,46 +166,133 @@ def download_video_thumbnails(videos: list) -> Dict[str, Any]:
         count_success += results["count"]
         updated_videos.extend(results["updated_videos"])
         
-        # # Check if current folder has reached 5000 files
-        # if is_docker:
-        #     with paramiko.SSHClient() as ssh:
-        #         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        #         ssh.connect(
-        #             hostname=SFTP_CONFIG["hostname"],
-        #             username=SFTP_CONFIG["username"],
-        #             password=SFTP_CONFIG["password"]
-        #         )
-        #         with ssh.open_sftp() as sftp:
-        #             current_files = count_files_in_remote_dir(sftp, str(current_folder_path))
-        # else:
-        #     current_files = len(list(current_folder_path.glob("*.jpg")))
-            
-        # if current_files >= MAX_FILES_PER_FOLDER:
-        #     # Create new folder for next batch
-        #     current_folder_num += 1
-        #     current_folder_name = str(current_folder_num)
-        #     current_folder_path = base_dir / current_folder_name
-            
-        #     # Create new folder
-        #     if is_docker:
-        #         with paramiko.SSHClient() as ssh:
-        #             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        #             ssh.connect(
-        #                 hostname=SFTP_CONFIG["hostname"],
-        #                 username=SFTP_CONFIG["username"],
-        #                 password=SFTP_CONFIG["password"]
-        #             )
-        #             with ssh.open_sftp() as sftp:
-        #                 ensure_remote_dir_exists(sftp, str(current_folder_path))
-        #     else:
-        #         current_folder_path.mkdir(exist_ok=True)
-                
-        #     logger.info(f"Created new folder {current_folder_name} after reaching 5000 files")
-        
-        # # Log progress after each batch
-        # logger.info(f"Completed batch {i//100 + 1}. Total downloaded: {count_success}")
-        
     return {
         "count": count_success,
         "updated_videos": updated_videos
     } 
+
+def download_video_thumbnails_auto(videos: list) -> Dict[str, Any]:
+    """Download thumbnails for videos in batches of 100."""
+    count_success = 0
+    updated_videos = []
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    is_docker = os.path.exists('/.dockerenv')
+    
+    logger.info(f"Running in {'Docker' if is_docker else 'local'} environment")
+    
+    # Chọn thư mục gốc dựa trên môi trường
+    if is_docker:
+        # Sử dụng đường dẫn SFTP khi chạy trong Docker
+        base_dir = Path(SFTP_CONFIG["remote_base_path"]) / "videos" / "thumbnails"
+        logger.info(f"Using remote storage path: {base_dir}")
+    else:
+        # Sử dụng đường dẫn local khi chạy bình thường
+        base_dir = DIRECTORIES["thumbnailvideos"]
+        logger.info(f"Using local storage path: {base_dir}")
+    
+    base_dir = base_dir / today_str
+    
+    # Create base directory
+    if is_docker:
+        with paramiko.SSHClient() as ssh:
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=SFTP_CONFIG["hostname"],
+                username=SFTP_CONFIG["username"],
+                password=SFTP_CONFIG["password"]
+            )
+            with ssh.open_sftp() as sftp:
+                ensure_remote_dir_exists(sftp, str(base_dir))
+    else:
+        base_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get current folder number by counting existing folders
+    if is_docker:
+        with paramiko.SSHClient() as ssh:
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=SFTP_CONFIG["hostname"],
+                username=SFTP_CONFIG["username"],
+                password=SFTP_CONFIG["password"]
+            )
+            with ssh.open_sftp() as sftp:
+                try:
+                    existing_folders = [f for f in sftp.listdir(str(base_dir)) if sftp.stat(f"{base_dir}/{f}").st_mode & 0o40000]
+                    current_folder_num = len(existing_folders) + 1
+                except Exception as e:
+                    logger.error(f"Error listing remote directories: {str(e)}")
+                    current_folder_num = 1
+    else:
+        existing_folders = [f for f in base_dir.iterdir() if f.is_dir()]
+        current_folder_num = len(existing_folders) + 1
+    
+    current_folder_name = str(current_folder_num)
+    current_folder_path = base_dir / current_folder_name
+    
+    # Create current folder
+    if is_docker:
+        with paramiko.SSHClient() as ssh:
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=SFTP_CONFIG["hostname"],
+                username=SFTP_CONFIG["username"],
+                password=SFTP_CONFIG["password"]
+            )
+            with ssh.open_sftp() as sftp:
+                ensure_remote_dir_exists(sftp, str(current_folder_path))
+    else:
+        current_folder_path.mkdir(exist_ok=True)
+    
+    # Process videos in batches of 100
+    for i in range(0, len(videos), 100):
+        batch = videos[i:i+100]
+        logger.info(f"Processing batch {i//100 + 1} of {(len(videos) + 99) // 100}")
+        
+        # Download batch concurrently
+        results = asyncio.run(download_batch_thumbnails(batch, base_dir, current_folder_name, is_docker))
+        count_success += results["count"]
+        updated_videos.extend(results["updated_videos"])
+        
+        # Check if current folder has reached 5000 files
+        if is_docker:
+            with paramiko.SSHClient() as ssh:
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh.connect(
+                    hostname=SFTP_CONFIG["hostname"],
+                    username=SFTP_CONFIG["username"],
+                    password=SFTP_CONFIG["password"]
+                )
+                with ssh.open_sftp() as sftp:
+                    current_files = count_files_in_remote_dir(sftp, str(current_folder_path))
+        else:
+            current_files = len(list(current_folder_path.glob("*.jpg")))
+            
+        if current_files >= MAX_FILES_PER_FOLDER:
+            # Create new folder for next batch
+            current_folder_num += 1
+            current_folder_name = str(current_folder_num)
+            current_folder_path = base_dir / current_folder_name
+            
+            # Create new folder
+            if is_docker:
+                with paramiko.SSHClient() as ssh:
+                    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    ssh.connect(
+                        hostname=SFTP_CONFIG["hostname"],
+                        username=SFTP_CONFIG["username"],
+                        password=SFTP_CONFIG["password"]
+                    )
+                    with ssh.open_sftp() as sftp:
+                        ensure_remote_dir_exists(sftp, str(current_folder_path))
+            else:
+                current_folder_path.mkdir(exist_ok=True)
+                
+            logger.info(f"Created new folder {current_folder_name} after reaching 5000 files")
+        
+        # Log progress after each batch
+        logger.info(f"Completed batch {i//100 + 1}. Total downloaded: {count_success}")
+        
+    return {
+        "count": count_success,
+        "updated_videos": updated_videos
+    }

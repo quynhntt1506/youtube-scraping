@@ -296,6 +296,7 @@ def crawl_video_by_urls(video_urls: List[str]) -> Dict[str, Any]:
                 result_crawl = crawl_videos_in_playlist(playlist_id)
                 logger.info(f'Crawled {len(result_crawl["videos"])} videos from playlist_ids')
 
+
 def crawl_videos_in_playlist(playlist_id: str) -> Dict[str, Any]:
     """Crawl videos from a playlist."""
     api = YouTubeAPI()

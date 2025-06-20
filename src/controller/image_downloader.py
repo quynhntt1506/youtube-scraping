@@ -12,14 +12,6 @@ import tempfile
 # Initialize logger
 logger = CustomLogger("image_downloader")
 
-# SFTP Configuration for Docker environment
-# SFTP_CONFIG = {
-#     "hostname": "192.168.132.250",
-#     "username": "htsc",
-#     "password": "Htsc@123",
-#     "remote_base_path": "/crawl-youtube/data"
-# }
-
 def count_files_in_remote_dir(sftp, remote_dir: str) -> int:
     """Count number of .jpg files in a remote directory using SFTP."""
     try:
@@ -216,9 +208,6 @@ def download_channel_images(detailed_channels: list) -> Dict[str, Any]:
     
     logger.info(f"Running in {'Docker' if is_docker else 'local'} environment")
         
-    # Chọn thư mục gốc dựa trên môi trường
-    # if is_docker:
-        # Sử dụng đường dẫn SFTP khi chạy trong Docker
     channels_dir = SFTP_CONFIG["remote_base_path"] + "/channels"
     logger.info(f"Using remote storage path: {channels_dir}")
     
@@ -238,35 +227,10 @@ def download_channel_images(detailed_channels: list) -> Dict[str, Any]:
                     "banners": 0,
                     "updated_channels": []
                 }
-    # else:
-    #     # Sử dụng đường dẫn local khi chạy bình thường
-    #     channels_dir = DIRECTORIES["channels"]
-    #     logger.info(f"Using local storage path: {channels_dir}")
-        
+
     avatars_dir = channels_dir + "/avatars"
     banners_dir = channels_dir + "/banners"
-    # avatars_dir = avatars_all_dir / today_str
-    # banners_dir = banners_all_dir / today_str
-    
-    # Create directories
-    # if is_docker:
-    #     with paramiko.SSHClient() as ssh:
-    #         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    #         ssh.connect(
-    #             hostname=SFTP_CONFIG["hostname"],
-    #             username=SFTP_CONFIG["username"],
-    #             password=SFTP_CONFIG["password"]
-    #         )
-    #         # with ssh.open_sftp() as sftp:
-    #         #     ensure_remote_dir_exists(sftp, str(avatars_dir))
-    #         #     ensure_remote_dir_exists(sftp, str(banners_dir))
-    # else:
-    #     avatars_dir.mkdir(parents=True, exist_ok=True)
-    #     avatars_dir.mkdir(parents=True, exist_ok=True)
-        # avatars_dir.mkdir(parents=True, exist_ok=True)
-        # banners_dir.mkdir(parents=True, exist_ok=True)
-    
-    
+
     # Process channels in batches of 100
     for i in range(0, len(detailed_channels), COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY):
         batch = detailed_channels[i:i+COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY]
@@ -277,65 +241,187 @@ def download_channel_images(detailed_channels: list) -> Dict[str, Any]:
         total_avatars += results["avatars"]
         total_banners += results["banners"]
         updated_channels.extend(results["updated_channels"])
+    
+    return {
+        "avatars": total_avatars,
+        "banners": total_banners,
+        "updated_channels": updated_channels
+    } 
+
+def download_channel_images_auto(detailed_channels: list) -> Dict[str, Any]:
+    """Download channel avatars and banners concurrently in batches of 100."""
+    total_avatars = 0
+    total_banners = 0
+    updated_channels = []
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    is_docker = os.path.exists('/.dockerenv')
+    
+    logger.info(f"Running in {'Docker' if is_docker else 'local'} environment")
         
-        # # Check if current folders have reached 5000 files
-        # if is_docker:
-        #     with paramiko.SSHClient() as ssh:
-        #         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        #         ssh.connect(
-        #             hostname=SFTP_CONFIG["hostname"],
-        #             username=SFTP_CONFIG["username"],
-        #             password=SFTP_CONFIG["password"]
-        #         )
-        #         with ssh.open_sftp() as sftp:
-        #             current_avatar_files = count_files_in_remote_dir(sftp, str(current_avatar_folder))
-        #             current_banner_files = count_files_in_remote_dir(sftp, str(current_banner_folder))
-        # else:
-        #     current_avatar_files = len(list(current_avatar_folder.glob("*.jpg")))
-        #     current_banner_files = len(list(current_banner_folder.glob("*.jpg")))
+    # Chọn thư mục gốc dựa trên môi trường
+    if is_docker:
+        # Sử dụng đường dẫn SFTP khi chạy trong Docker
+        channels_dir = Path(SFTP_CONFIG["remote_base_path"]) / "channels"
+        logger.info(f"Using remote storage path: {channels_dir}")
         
-        # # Create new avatar folder if needed
-        # if current_avatar_files >= MAX_FILES_PER_FOLDER:
-        #     current_avatar_folder_num += 1
-        #     current_avatar_folder = avatars_dir / str(current_avatar_folder_num)
+        # Create all necessary directories first
+        with paramiko.SSHClient() as ssh:
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=SFTP_CONFIG["hostname"],
+                username=SFTP_CONFIG["username"],
+                password=SFTP_CONFIG["password"]
+            )
+            with ssh.open_sftp() as sftp:
+                if not create_remote_directories(sftp, str(SFTP_CONFIG["remote_base_path"])):
+                    logger.error("Failed to create remote directories. Exiting...")
+                    return {
+                        "avatars": 0,
+                        "banners": 0,
+                        "updated_channels": []
+                    }
+    else:
+        # Sử dụng đường dẫn local khi chạy bình thường
+        channels_dir = DIRECTORIES["channels"]
+        logger.info(f"Using local storage path: {channels_dir}")
+        
+    avatars_all_dir = channels_dir / "avatars"
+    banners_all_dir = channels_dir / "banners"
+    avatars_dir = avatars_all_dir / today_str
+    banners_dir = banners_all_dir / today_str
+    
+    # Create directories
+    if is_docker:
+        with paramiko.SSHClient() as ssh:
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=SFTP_CONFIG["hostname"],
+                username=SFTP_CONFIG["username"],
+                password=SFTP_CONFIG["password"]
+            )
+            with ssh.open_sftp() as sftp:
+                ensure_remote_dir_exists(sftp, str(avatars_dir))
+                ensure_remote_dir_exists(sftp, str(banners_dir))
+    else:
+        avatars_all_dir.mkdir(parents=True, exist_ok=True)
+        banners_all_dir.mkdir(parents=True, exist_ok=True)
+        avatars_dir.mkdir(parents=True, exist_ok=True)
+        banners_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get current folder numbers by counting existing folders
+    if is_docker:
+        with paramiko.SSHClient() as ssh:
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=SFTP_CONFIG["hostname"],
+                username=SFTP_CONFIG["username"],
+                password=SFTP_CONFIG["password"]
+            )
+            with ssh.open_sftp() as sftp:
+                try:
+                    existing_avatar_folders = [f for f in sftp.listdir(str(avatars_dir)) if sftp.stat(f"{avatars_dir}/{f}").st_mode & 0o40000]
+                    existing_banner_folders = [f for f in sftp.listdir(str(banners_dir)) if sftp.stat(f"{banners_dir}/{f}").st_mode & 0o40000]
+                    current_avatar_folder_num = len(existing_avatar_folders) + 1
+                    current_banner_folder_num = len(existing_banner_folders) + 1
+                except Exception as e:
+                    logger.error(f"Error listing remote directories: {str(e)}")
+                    current_avatar_folder_num = 1
+                    current_banner_folder_num = 1
+    else:
+        existing_avatar_folders = [f for f in avatars_dir.iterdir() if f.is_dir()]
+        existing_banner_folders = [f for f in banners_dir.iterdir() if f.is_dir()]
+        current_avatar_folder_num = len(existing_avatar_folders) + 1
+        current_banner_folder_num = len(existing_banner_folders) + 1
+    
+    # Initialize current folders
+    current_avatar_folder = avatars_dir / str(current_avatar_folder_num)
+    current_banner_folder = banners_dir / str(current_banner_folder_num)
+    
+    # Create current folders
+    if is_docker:
+        with paramiko.SSHClient() as ssh:
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=SFTP_CONFIG["hostname"],
+                username=SFTP_CONFIG["username"],
+                password=SFTP_CONFIG["password"]
+            )
+            with ssh.open_sftp() as sftp:
+                ensure_remote_dir_exists(sftp, str(current_avatar_folder))
+                ensure_remote_dir_exists(sftp, str(current_banner_folder))
+    else:
+        current_avatar_folder.mkdir(exist_ok=True)
+        current_banner_folder.mkdir(exist_ok=True)
+    
+    # Process channels in batches of 100
+    for i in range(0, len(detailed_channels), COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY):
+        batch = detailed_channels[i:i+COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY]
+        logger.info(f"Processing batch {i//COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY + 1} of {(len(detailed_channels) + (COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY - 1)) // COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY}")
+        
+        # Download batch concurrently
+        results = asyncio.run(download_batch_images(batch, current_avatar_folder, current_banner_folder, is_docker))
+        total_avatars += results["avatars"]
+        total_banners += results["banners"]
+        updated_channels.extend(results["updated_channels"])
+        
+        # Check if current folders have reached 5000 files
+        if is_docker:
+            with paramiko.SSHClient() as ssh:
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh.connect(
+                    hostname=SFTP_CONFIG["hostname"],
+                    username=SFTP_CONFIG["username"],
+                    password=SFTP_CONFIG["password"]
+                )
+                with ssh.open_sftp() as sftp:
+                    current_avatar_files = count_files_in_remote_dir(sftp, str(current_avatar_folder))
+                    current_banner_files = count_files_in_remote_dir(sftp, str(current_banner_folder))
+        else:
+            current_avatar_files = len(list(current_avatar_folder.glob("*.jpg")))
+            current_banner_files = len(list(current_banner_folder.glob("*.jpg")))
+        
+        # Create new avatar folder if needed
+        if current_avatar_files >= MAX_FILES_PER_FOLDER:
+            current_avatar_folder_num += 1
+            current_avatar_folder = avatars_dir / str(current_avatar_folder_num)
             
-        #     if is_docker:
-        #         with paramiko.SSHClient() as ssh:
-        #             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        #             ssh.connect(
-        #                 hostname=SFTP_CONFIG["hostname"],
-        #                 username=SFTP_CONFIG["username"],
-        #                 password=SFTP_CONFIG["password"]
-        #             )
-        #             with ssh.open_sftp() as sftp:
-        #                 ensure_remote_dir_exists(sftp, str(current_avatar_folder))
-        #     else:
-        #         current_avatar_folder.mkdir(exist_ok=True)
+            if is_docker:
+                with paramiko.SSHClient() as ssh:
+                    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    ssh.connect(
+                        hostname=SFTP_CONFIG["hostname"],
+                        username=SFTP_CONFIG["username"],
+                        password=SFTP_CONFIG["password"]
+                    )
+                    with ssh.open_sftp() as sftp:
+                        ensure_remote_dir_exists(sftp, str(current_avatar_folder))
+            else:
+                current_avatar_folder.mkdir(exist_ok=True)
                 
-        #     logger.info(f"Created new avatar folder {current_avatar_folder.name} after reaching 5000 files")
+            logger.info(f"Created new avatar folder {current_avatar_folder.name} after reaching 5000 files")
         
-        # # Create new banner folder if needed
-        # if current_banner_files >= MAX_FILES_PER_FOLDER:
-        #     current_banner_folder_num += 1
-        #     current_banner_folder = banners_dir / str(current_banner_folder_num)
+        # Create new banner folder if needed
+        if current_banner_files >= MAX_FILES_PER_FOLDER:
+            current_banner_folder_num += 1
+            current_banner_folder = banners_dir / str(current_banner_folder_num)
             
-        #     if is_docker:
-        #         with paramiko.SSHClient() as ssh:
-        #             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        #             ssh.connect(
-        #                 hostname=SFTP_CONFIG["hostname"],
-        #                 username=SFTP_CONFIG["username"],
-        #                 password=SFTP_CONFIG["password"]
-        #             )
-        #             with ssh.open_sftp() as sftp:
-        #                 ensure_remote_dir_exists(sftp, str(current_banner_folder))
-        #     else:
-        #         current_banner_folder.mkdir(exist_ok=True)
+            if is_docker:
+                with paramiko.SSHClient() as ssh:
+                    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    ssh.connect(
+                        hostname=SFTP_CONFIG["hostname"],
+                        username=SFTP_CONFIG["username"],
+                        password=SFTP_CONFIG["password"]
+                    )
+                    with ssh.open_sftp() as sftp:
+                        ensure_remote_dir_exists(sftp, str(current_banner_folder))
+            else:
+                current_banner_folder.mkdir(exist_ok=True)
                 
-        #     logger.info(f"Created new banner folder {current_banner_folder.name} after reaching 5000 files")
+            logger.info(f"Created new banner folder {current_banner_folder.name} after reaching 5000 files")
         
-        # # Log progress after each batch
-        # logger.info(f"Completed batch {i//COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY + 1}. Downloaded {total_avatars} avatars and {total_banners} banners so far")
+        # Log progress after each batch
+        logger.info(f"Completed batch {i//COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY + 1}. Downloaded {total_avatars} avatars and {total_banners} banners so far")
     
     return {
         "avatars": total_avatars,

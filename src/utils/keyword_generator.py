@@ -97,7 +97,8 @@ class KeywordGenerator:
         # Connect to MongoDB
         self.client = MongoClient(MONGODB_URI)
         self.db = self.client[MONGODB_DB]
-        self.collection = self.db["youtube_keywords"]
+        self.collection = self.db["youtube_keywords_local"]
+            
 
     def generate_keywords(self, num_keywords: int = 100) -> List[str]:
         """Generate a list of meaningful Vietnamese keywords related to human faces and content.

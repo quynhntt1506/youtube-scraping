@@ -37,14 +37,15 @@ for directory in DIRECTORIES.values():
 
 # API configuration
 MAX_CHANNELS = 1
-MIN_ENTITY_IN_BATCH = 50
-MAX_ENTITY_IN_BATCH = 100
+MIN_ENTITY_IN_BATCH = 1
+MAX_ENTITY_IN_BATCH = 2
 MAX_RESULTS_PER_PAGE = 1
 MAX_ID_PAYLOAD = 50
 MAX_FILES_PER_FOLDER = 5000
 COUNT_FILES_DOWNLOAD_SIMULTANEOUSLY = 100
 MAX_RETRIES = 3
 RETRY_DELAY = 1  # seconds
+COUNT_THREADS_DEFAULT = 5
 
 # Logging configuration
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -67,10 +68,34 @@ STATUS_ENTITY = {
 
 # MongoDB Configuration
 MONGODB_COLLECTIONS = {
-    "channels": "youtube_channels",
-    "videos": "youtube_videos",
-    "youtube_crawl_history": "youtube_crawl_history",
+    "channels": "youtube_channels_local",
+    "videos": "youtube_videos_local",
     "api_keys": "youtube_api_keys",
-    "youtube_keywords": "youtube_keywords",
-    "comments": "youtube_comments",
+    "youtube_keywords": "youtube_keywords_local",
+    "comments": "youtube_comments_local",
 }
+
+# KAFKA INFO
+KAFKA_BOOTSTRAP_SERVERS = '192.168.132.250:9092'
+
+#API_KEYS
+API_KEYS = [
+    {
+        "email": "gaosecret150602@gmail.com",
+        "apiKey": "AIzaSyAOs2_3bySOWc-7fEp0pU-7ZycFmLDZwOY",
+        "remainingQuota": 10000,
+        "status": "active",
+    },
+    {
+        "email": "maryjane.0372343393@gmail.com",
+        "apiKey": "AIzaSyBo06SZ0i_ExCwkg7-6XCt350XLwgCxTa8",
+        "remainingQuota": 10000,
+        "status": "active",
+    },
+    {
+        "email": "johnsmith.0342300227@gmail.com",
+        "apiKey": "AIzaSyDQVEya_OtEixDjWxww0UPzx4VuU4IFzW4",
+        "remainingQuota": 10000,
+        "status": "active",
+    }
+]

@@ -15,11 +15,7 @@ from src.database.api_key_manager import APIKeyManager
 from src.utils.common import convert_to_datetime
 from src.utils.logger import CustomLogger
 from src.config.config import (
-    # PROCESSED_DATA_DIR,
-    # PROCESSED_PLAYLIST_DATA_DIR,
-    # PROCESSED_CHANNEL_DATA_DIR,
-    # PROCESSED_VIDEO_DATA_DIR,
-    # PROCESSED_COMMENTS_DATA_DIR,
+    API_KEYS,
     MAX_RESULTS_PER_PAGE,
     MAX_ID_PAYLOAD,
     STATUS_ENTITY
@@ -41,6 +37,7 @@ class YouTubeAPI:
         try:
             # Get all active API keys from database
             active_keys = self.api_manager.get_active_api_keys()
+            # active_keys = API_KEYS
             return [key["apiKey"] for key in active_keys]
         except Exception as e:
             self.logger.error(f"Error loading API keys from database: {e}")
@@ -368,94 +365,6 @@ class YouTubeAPI:
             "quota_usage": quota_usage
         }
     
-    # def save_crawl_result(self, result: list, keyword: str) -> None:
-    #     """Save crawl results to JSON file."""
-    #     data = {
-    #         "time": datetime.now().isoformat(),
-    #         "keyword": keyword,
-    #         "responses": result
-    #     }
-        
-    #     # Create date-based directory
-    #     today_str = datetime.now().strftime('%d-%m-%Y')
-    #     save_dir = PROCESSED_DATA_DIR / today_str
-    #     save_dir.mkdir(parents=True, exist_ok=True)
-        
-    #     # Save to file
-    #     file_path = save_dir / f"{keyword}.json"
-    #     with open(file_path, "w", encoding="utf-8") as f:
-    #         json.dump(data, f, ensure_ascii=False, indent=4)
-    
-    # def save_crawl_result_playlist(self, result: list, keyword: str) -> None:
-    #     """Save crawl results to JSON file."""
-    #     data = {
-    #         "time": datetime.now().isoformat(),
-    #         "keyword": keyword,
-    #         "responses": result
-    #     }
-        
-    #     # Create date-based directory
-    #     today_str = datetime.now().strftime('%d-%m-%Y')
-    #     save_dir = PROCESSED_PLAYLIST_DATA_DIR / today_str
-    #     save_dir.mkdir(parents=True, exist_ok=True)
-        
-    #     # Save to file
-    #     file_path = save_dir / f"{keyword}.json"
-    #     with open(file_path, "w", encoding="utf-8") as f:
-    #         json.dump(data, f, ensure_ascii=False, indent=4)
-    # def save_crawl_result_channel(self, result: list, keyword: str) -> None:
-    #     """Save crawl results to JSON file."""
-    #     data = {
-    #         "time": datetime.now().isoformat(),
-    #         "keyword": keyword,
-    #         "responses": result
-    #     }
-        
-    #     # Create date-based directory
-    #     today_str = datetime.now().strftime('%d-%m-%Y')
-    #     save_dir = PROCESSED_CHANNEL_DATA_DIR / today_str
-    #     save_dir.mkdir(parents=True, exist_ok=True)
-        
-    #     # Save to file
-    #     file_path = save_dir / f"{keyword}.json"
-    #     with open(file_path, "w", encoding="utf-8") as f:
-    #         json.dump(data, f, ensure_ascii=False, indent=4, default=lambda x: x.isoformat() if isinstance(x, datetime) else x)
-    
-    # def save_crawl_result_videos(self, result: list, keyword: str) -> None:
-    #     """Save crawl results to JSON file."""
-    #     data = {
-    #         "time": datetime.now().isoformat(),
-    #         "keyword": keyword,
-    #         "responses": result
-    #     }
-        
-    #     # Create date-based directory
-    #     today_str = datetime.now().strftime('%d-%m-%Y')
-    #     save_dir = PROCESSED_VIDEO_DATA_DIR / today_str
-    #     save_dir.mkdir(parents=True, exist_ok=True)
-        
-    #     # Save to file
-    #     file_path = save_dir / f"{keyword}.json"
-    #     with open(file_path, "w", encoding="utf-8") as f:
-    #         json.dump(data, f, ensure_ascii=False, indent=4)
-
-    # def save_crawl_result_comments(self, result: list, keyword: str) -> None:
-    #     """Save crawl results to JSON file."""
-    #     data = {
-    #         "time": datetime.now().isoformat(),
-    #         "keyword": keyword,
-    #         "responses": result
-    #     }
-        
-    #     # Create date-based directory
-    #     today_str = datetime.now().strftime('%d-%m-%Y')
-    #     save_dir = PROCESSED_COMMENTS_DATA_DIR / today_str
-    #     save_dir.mkdir(parents=True, exist_ok=True)
-        
-    #     # Save to file
-    #     file_path = save_dir / f"{keyword}.json"
-    #     with open(file_path, "w", encoding="utf-8") as f:
-    #         json.dump(data, f, ensure_ascii=False, indent=4)
 
     def close(self):
         """Close database connection."""
@@ -526,6 +435,75 @@ class YouTubeAPI:
             "quota_usage": quota_usage
         }
 
+    def get_all_videos_from_playlists(self, playlist_ids: List[str]) -> Dict[str, Any]:
+        """Get all videos from multiple playlists."""
+        all_videos = []
+        quota_usage = {}
+        all_responses = []
+        crawled_playlist_ids = []        
+        
+        for playlist_id in playlist_ids:
+            videos = []
+            next_page_token = None
+            
+            try:
+                while True:
+                    try:
+                        request = self.youtube.playlistItems().list(
+                            part="snippet,contentDetails",
+                            playlistId=playlist_id,
+                            maxResults=MAX_RESULTS_PER_PAGE,
+                            pageToken=next_page_token
+                        )
+                        
+                        time.sleep(1)  # Add 1 second delay before API call
+                        response = request.execute()
+                        all_responses.append(response)
+                        
+                        # Track quota usage
+                        quota_usage = self._track_quota(1, quota_usage)
+
+                        for item in response.get("items", []):
+                            video_info = Video.from_youtube_response_playlist(item, playlist_id)
+                            # Convert to dict and remove _id field if it's None
+                            video_dict = video_info.model_dump(by_alias=True)
+                            if video_dict.get("_id") is None:
+                                video_dict.pop("_id", None)
+                            videos.append(video_dict)
+                        next_page_token = response.get("nextPageToken")
+                        if not next_page_token:
+                            break
+                            
+                    except googleapiclient.errors.HttpError as e:
+                        error_details = e.error_details[0]
+                        if error_details.get("reason") == "quotaExceeded":
+                            self.logger.warning(f"API key quota exceeded. Switching to next key...")
+                            if not self._switch_api_key():
+                                self.logger.error("No more API keys available. Stopping video retrieval.")
+                                break
+                            continue
+                        elif error_details.get("reason") == "playlistNotFound":
+                            self.logger.warning(f"Playlist {playlist_id} not found.")
+                            break
+                        else:
+                            self.logger.error(f"API Error getting playlist items: {e}")
+                            break
+                            
+            except Exception as e:
+                self.logger.error(f"Error getting videos for playlist {playlist_id}: {e}")
+                continue
+            crawled_playlist_ids.append(playlist_id)
+            self.logger.info(f"Crawled {len(videos)} videos for playlist {playlist_id}")
+            all_videos.extend(videos)
+        # if all_responses:
+        #     self.save_crawl_result_playlist(all_responses, "playlist")
+            
+            
+        return {
+            "crawled_playlist_ids": crawled_playlist_ids,
+            "videos": all_videos,
+            "quota_usage": quota_usage
+        }
     def get_video_details(self, video_ids: List[str]) -> Dict[str, Any]:
         """Get detailed information for multiple videos."""
         detailed_videos = []
