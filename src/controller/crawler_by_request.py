@@ -18,7 +18,7 @@ from src.config.config import MAX_CHANNELS, MAX_ENTITY_IN_BATCH, MIN_ENTITY_IN_B
 from src.controller.send_to_data_controller import *
 
 # Initialize logger
-logger = CustomLogger("crawler_auto")
+logger = CustomLogger("crawler_to_send_rabbitmq")
 
 class DateTimeEncoder(json.JSONEncoder):
     """Custom JSON encoder for datetime objects."""

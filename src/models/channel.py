@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
 from bson import ObjectId
-from src.utils.common import convert_to_datetime, format_datetime_to_iso
+from src.utils.common import convert_to_datetime, format_datetime_to_iso, convert_datetime_to_timestamp
 from src.config.config import STATUS_ENTITY
 
 class Channel(BaseModel):
@@ -22,7 +22,8 @@ class Channel(BaseModel):
     title: str
     description: Optional[str] = None
     customUrl: Optional[str] = None
-    publishedAt: Optional[datetime] = None
+    # publishedAt: Optional[datetime] = None
+    publishedAt: Optional[int] = None
     country: Optional[str] = None
     subscriberCount: Optional[int] = None
     videoCount: Optional[int] = None
@@ -60,7 +61,8 @@ class Channel(BaseModel):
             title=snippet.get("title", ""),
             description=description,
             customUrl=snippet.get("customUrl"),
-            publishedAt=datetime.fromisoformat(format_datetime_to_iso(snippet.get("publishedAt")).replace("Z", "+00:00")),
+            # publishedAt=datetime.fromisoformat(format_datetime_to_iso(snippet.get("publishedAt")).replace("Z", "+00:00")),
+            publishedAt=convert_datetime_to_timestamp(format_datetime_to_iso(snippet.get("publishedAt")).replace("Z", "+00:00")),
             country=snippet.get("country"),
             subscriberCount=int(statistics.get("subscriberCount", 0)),
             videoCount=int(statistics.get("videoCount", 0)),

@@ -36,8 +36,8 @@ class YouTubeAPI:
         """Load active API keys from database."""
         try:
             # Get all active API keys from database
-            active_keys = self.api_manager.get_active_api_keys()
-            # active_keys = API_KEYS
+            # active_keys = self.api_manager.get_active_api_keys()
+            active_keys = API_KEYS
             return [key["apiKey"] for key in active_keys]
         except Exception as e:
             self.logger.error(f"Error loading API keys from database: {e}")
@@ -58,11 +58,11 @@ class YouTubeAPI:
     def _switch_api_key(self) -> bool:
         """Switch to next API key if available."""
         # Mark current API key as unactive if quota is 0
-        if self.current_key_index < len(self.api_keys):
-            current_api_key = self.api_keys[self.current_key_index]
-            api_key_doc = self.api_manager.get_api_key_stats(current_api_key)
-            if api_key_doc and api_key_doc["remainingQuota"] <= 0:
-                self.api_manager.update_quota(current_api_key, 0)  # This will set status to unactive
+        # if self.current_key_index < len(self.api_keys):
+        #     current_api_key = self.api_keys[self.current_key_index]
+        #     api_key_doc = self.api_manager.get_api_key_stats(current_api_key)
+        #     if api_key_doc and api_key_doc["remainingQuota"] <= 0:
+        #         self.api_manager.update_quota(current_api_key, 0)  # This will set status to unactive
 
         # Try to get next active API key
         self.current_key_index += 1

@@ -2,11 +2,15 @@ import os
 from pathlib import Path
 
 # MongoDB configuration
-MONGODB_URI = 'mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0'
-MONGODB_DB = 'youtube_data'
+# MONGODB_URI = 'mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0'
+# MONGODB_DB = 'youtube_data'
 
 # MONGODB_URI = 'mongodb://localhost:27017/'
-# MONGODB_DB = 'youtube_crawl_test'
+# MONGODB_DB = 'youtube_data_crawl'
+
+MONGODB_URI = 'mongodb://192.168.132.250:27011/?replicaSet=rs0'
+MONGODB_DB = 'youtube_data'
+
 
 SFTP_CONFIG = {
     "hostname": "192.168.132.250",

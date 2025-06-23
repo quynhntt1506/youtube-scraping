@@ -4,8 +4,8 @@ FROM python:3.9-slim
 # Set working directory
 WORKDIR /youtube-crawler
 
-ENV MONGODB_URI=mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0
-ENV MONGODB_DB=youtube_data
+# ENV MONGODB_URI=mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0
+# ENV MONGODB_DB=youtube_data
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

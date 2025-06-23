@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 from bson import ObjectId
-from src.utils.common import convert_to_datetime, format_datetime_to_iso
+from src.utils.common import convert_to_datetime, format_datetime_to_iso, convert_datetime_to_timestamp
 from src.config.config import STATUS_ENTITY
 
 class Video(BaseModel):
@@ -20,7 +20,8 @@ class Video(BaseModel):
     videoId: str
     title: str
     description: Optional[str] = None
-    publishedAt: Optional[datetime] = None
+    # publishedAt: Optional[datetime] = None
+    publishedAt: Optional[int] = None
     channelId: str
     channelTitle: str
     thumbnailUrl: Optional[str] = None
@@ -39,7 +40,7 @@ class Video(BaseModel):
     tags: Optional[List[str]] = None
     playlistId: Optional[str] = None
     position: Optional[int] = None
-    crawlDate: datetime = Field(default_factory=datetime.now)
+    # crawlDate: datetime = Field(default_factory=datetime.now)
     updateStatus: Optional[str] = None
     privacyStatus: Optional[str] = None
     publicStatsViewable: Optional[bool] = None
@@ -59,13 +60,14 @@ class Video(BaseModel):
             videoId=content_details.get("videoId", ""),
             title=snippet.get("title", ""),
             description=snippet.get("description"),
-            publishedAt=datetime.fromisoformat(format_datetime_to_iso(snippet.get("publishedAt")).replace("Z", "+00:00")),
+            # publishedAt=datetime.fromisoformat(format_datetime_to_iso(snippet.get("publishedAt")).replace("Z", "+00:00")),
+            publishedAt=convert_datetime_to_timestamp(format_datetime_to_iso(snippet.get("publishedAt")).replace("Z", "+00:00")),
             channelId=snippet.get("channelId", ""),
             channelTitle=snippet.get("channelTitle", ""),
             thumbnailUrl=snippet.get("thumbnails", {}).get("high", {}).get("url"),
             playlistId=playlist_id,
             position=snippet.get("position", ""),
-            crawlDate=datetime.now(),
+            # crawlDate=datetime.now(),
             status=STATUS_ENTITY["to_crawl"]
         )
     
@@ -82,7 +84,8 @@ class Video(BaseModel):
             videoId=item.get("id", ""),
             title=snippet.get("title", ""),
             description=snippet.get("description"),
-            publishedAt=datetime.fromisoformat(format_datetime_to_iso(snippet.get("publishedAt")).replace("Z", "+00:00")),
+            # publishedAt=datetime.fromisoformat(format_datetime_to_iso(snippet.get("publishedAt")).replace("Z", "+00:00")),
+            publishedAt=convert_datetime_to_timestamp(format_datetime_to_iso(snippet.get("publishedAt")).replace("Z", "+00:00")),
             channelId=snippet.get("channelId", ""),
             channelTitle=snippet.get("channelTitle", ""),
             thumbnailUrl=snippet.get("thumbnails", {}).get("high", {}).get("url"),
@@ -105,7 +108,7 @@ class Video(BaseModel):
             publicStatsViewable=status.get("publicStatsViewable"),
             embeddable=status.get("embeddable"),
             madeForKids=status.get("madeForKids"),
-            crawlDate=datetime.now(),
+            # crawlDate=datetime.now(),
             status=STATUS_ENTITY["crawled_video"]
         )
 

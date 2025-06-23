@@ -182,3 +182,17 @@ def parse_youtube_channel_url(url: str) -> Dict[str, Optional[str]]:
         'value': None,
         'original_url': url
     }
+
+def convert_datetime_to_timestamp(dt_str: str) -> int:
+    """
+    Chuyển chuỗi datetime (ISO 8601 hoặc định dạng phổ biến) về unix timestamp (giây).
+    Args:
+        dt_str (str): Chuỗi datetime (ví dụ: '2023-09-26T02:31:51.000Z')
+    Returns:
+        int: Unix timestamp (giây)
+    """
+    try:
+        dt = parser.parse(dt_str)
+        return int(dt.timestamp())
+    except Exception:
+        raise ValueError(f"Error processing convert datetime: {dt_str}")
