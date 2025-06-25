@@ -11,6 +11,8 @@ from pathlib import Path
 MONGODB_URI = 'mongodb://192.168.132.250:27011/?replicaSet=rs0'
 MONGODB_DB = 'youtube_data'
 
+# PostgreSQL configuration
+POSTGRES_URI = 'postgresql://airflow:airflow@192.168.132.250:5432/youtube_data'
 
 SFTP_CONFIG = {
     "hostname": "192.168.132.250",
@@ -18,8 +20,6 @@ SFTP_CONFIG = {
     "password": "Htsc@123",
     "remote_base_path": "/home/htsc/crawl-youtube/data-request/images"
 }
-
-
 # Define base directories
 BASE_DIR = Path(__file__).parent.parent.parent
 DATA_DIR = BASE_DIR / "data"

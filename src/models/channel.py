@@ -2,28 +2,53 @@ import re
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
-from bson import ObjectId
+from sqlalchemy import Column, String, Integer, DateTime, Text, Index
+from sqlalchemy.ext.declarative import declarative_base
 from src.utils.common import convert_to_datetime, format_datetime_to_iso, convert_datetime_to_timestamp
 from src.config.config import STATUS_ENTITY
+import json
+
+Base = declarative_base()
+
+class ChannelSQL(Base):
+    """SQLAlchemy Channel model for PostgreSQL."""
+    __tablename__ = 'channels'
+    
+    id = Column(Integer, primary_key=True)
+    channel_id = Column(String(50), unique=True, nullable=False, index=True)
+    title = Column(String(500), nullable=False)
+    description = Column(Text)
+    custom_url = Column(String(100))
+    published_at = Column(DateTime)
+    country = Column(String(10))
+    subscriber_count = Column(Integer, default=0)
+    video_count = Column(Integer, default=0)
+    view_count = Column(Integer, default=0)
+    topics = Column(Text)  # JSON string
+    email = Column(String(255))
+    avatar_url = Column(String(500))
+    banner_url = Column(String(500))
+    playlist_id = Column(String(50))
+    status = Column(String(50), default='to_crawl')
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class Channel(BaseModel):
-    """Channel model for MongoDB."""
+    """Channel model for PostgreSQL."""
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         populate_by_name=True,
         json_encoders={
-            ObjectId: str,
             datetime: lambda dt: dt.isoformat()
         }
     )
     
-    id: Optional[ObjectId] = Field(default=None, alias="_id")
+    id: Optional[int] = Field(default=None, alias="_id")
     channelId: str
     title: str
     description: Optional[str] = None
     customUrl: Optional[str] = None
-    # publishedAt: Optional[datetime] = None
-    publishedAt: Optional[int] = None
+    publishedAt: Optional[int] = None  # Unix timestamp
     country: Optional[str] = None
     subscriberCount: Optional[int] = None
     videoCount: Optional[int] = None
@@ -33,8 +58,9 @@ class Channel(BaseModel):
     avatarUrl: Optional[str] = None
     bannerUrl: Optional[str] = None
     playlistId: Optional[str] = None
-    # crawlDate: datetime = Field(default_factory=datetime.now)
     status: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     @staticmethod
     def extract_email(text: str) -> Optional[str]:
@@ -61,7 +87,6 @@ class Channel(BaseModel):
             title=snippet.get("title", ""),
             description=description,
             customUrl=snippet.get("customUrl"),
-            # publishedAt=datetime.fromisoformat(format_datetime_to_iso(snippet.get("publishedAt")).replace("Z", "+00:00")),
             publishedAt=convert_datetime_to_timestamp(format_datetime_to_iso(snippet.get("publishedAt")).replace("Z", "+00:00")),
             country=snippet.get("country"),
             subscriberCount=int(statistics.get("subscriberCount", 0)),
@@ -72,6 +97,25 @@ class Channel(BaseModel):
             avatarUrl=snippet.get("thumbnails", {}).get("default", {}).get("url"),
             bannerUrl=branding.get("image", {}).get("bannerExternalUrl"),
             playlistId=content_details.get("relatedPlaylists", {}).get("uploads"),
-            # crawlDate=datetime.now(),
             status=STATUS_ENTITY["crawled_channel"]
         )
+
+    def to_sql_dict(self) -> dict:
+        """Convert to dictionary format for SQLAlchemy."""
+        return {
+            "channel_id": self.channelId,
+            "title": self.title,
+            "description": self.description,
+            "custom_url": self.customUrl,
+            "published_at": datetime.fromtimestamp(self.publishedAt) if self.publishedAt else None,
+            "country": self.country,
+            "subscriber_count": self.subscriberCount,
+            "video_count": self.videoCount,
+            "view_count": self.viewCount,
+            "topics": json.dumps(self.topics) if self.topics else None,
+            "email": self.email,
+            "avatar_url": self.avatarUrl,
+            "banner_url": self.bannerUrl,
+            "playlist_id": self.playlistId,
+            "status": self.status
+        }
