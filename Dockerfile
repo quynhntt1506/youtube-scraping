@@ -24,13 +24,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p /mnt/data/youtube/images/channels \
-    /mnt/data/youtube/images/thumbnailvideos \
-    /mnt/data/youtube/logs
+# RUN mkdir -p /mnt/data/youtube/images/channels \
+#     /mnt/data/youtube/images/thumbnailvideos \
+#     /mnt/data/youtube/logs
 
 # Set environment variables
 ENV PYTHONPATH=/youtube-crawler
 
 # Command to run the application
-ENTRYPOINT ["python", "src/main.py"]
-CMD ["--service", "crawl-data", "--num-keywords", "1"] 
+ENTRYPOINT ["python", "app.py"]
+CMD ["--service", "kafka-auto", "--num-keywords", "1"] 

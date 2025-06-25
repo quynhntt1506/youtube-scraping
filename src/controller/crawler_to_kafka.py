@@ -45,6 +45,31 @@ def send_to_kafka(topic: str, message: dict, bootstrap_servers: str = KAFKA_BOOT
     producer.close()
 
 
+def crawl_channels_by_keyword(keyword: str, max_results: int = MAX_CHANNELS) -> Dict[str, Any]:
+    """Crawl channels by keyword."""
+    api = YouTubeAPI()
+    db = Database()
+    
+    try:
+        # Search channels
+        search_result = api.search_channel_by_keyword(keyword, max_results=max_results)
+        logger.info(f"Search keyword '{keyword}'")
+        logger.info(f"Found {len(search_result['channels'])} channels")
+        # Get detailed channel information
+        channel_ids = [c["channelId"] for c in search_result["channels"]] 
+        detailed_channels = []
+        for i in range(0, len(channel_ids), MAX_ENTITY_IN_BATCH):
+            batch_channel_ids = channel_ids[i:i+MAX_ENTITY_IN_BATCH]
+            batch_channel_result = crawl_channel_by_id(batch_channel_ids)
+            batch_detailed_channels = batch_channel_result["detailed_channels"]
+            detailed_channels.extend(batch_detailed_channels)
+        return {
+            "detailed_channels": detailed_channels,
+        }
+        
+    finally:
+        logger.info(f"Done crawl channel by keyword")
+
 def crawl_channel_by_id(channel_ids: List[str]) -> Dict[str, Any]:
     """Crawl channel by id."""
     api = YouTubeAPI()
@@ -57,7 +82,7 @@ def crawl_channel_by_id(channel_ids: List[str]) -> Dict[str, Any]:
         if (channel_result["detailed_channels"]):
             for channel in channel_result["detailed_channels"]:
                 if channel:
-                    print(channel);
+                    # print(channel);
                     send_to_kafka("youtube.channel.crawler.raw", channel)
                     # crawl_videos_in_playlist(channel["playlistId"])
                     all_detaled_channels.append(channel)
@@ -66,7 +91,7 @@ def crawl_channel_by_id(channel_ids: List[str]) -> Dict[str, Any]:
             logger.info(f"Error processing crawl channel")
         # result_db = db.insert_many_channels(all_detaled_channels)
         return {
-            "new_channels": all_detaled_channels,
+            "detailed_channels": all_detaled_channels,
         }
     finally:
         logger.info(f"Done crawl channel by id")
@@ -121,7 +146,7 @@ def crawl_video_by_ids(video_ids: List[str]) -> Dict[str, Any]:
                     video["comments"] = comment_result["comments"]
                 else:
                     video["comments"] = []
-                print(video)
+                # print(video)
                 all_detailed_videos.append(video)
                 if (video):
                     send_to_kafka("youtube.video.crawler.raw", video)
@@ -129,7 +154,7 @@ def crawl_video_by_ids(video_ids: List[str]) -> Dict[str, Any]:
         # result_db = db.insert_many_videos(all_detailed_videos)
         return {
             "new_videos": all_detailed_videos,
-        }
+        }        
     finally:
         # db.close()
         logger.info(f"Done crawl video by id")
@@ -157,7 +182,7 @@ def crawl_video_by_urls(video_urls: List[str]) -> Dict[str, Any]:
         if playlist_ids:
             for playlist_id in playlist_ids:
                 result_crawl = crawl_videos_in_playlist(playlist_id)
-                logger.info(f"Crawled {len(result_crawl['videos'])} videos from playlist_ids")
+                logger.info(f"Crawled {len(result_crawl.get('videos', []))} videos from playlist_ids")
 
 
 def crawl_videos_in_playlist(playlist_id: str) -> Dict[str, Any]:
@@ -186,3 +211,23 @@ def crawl_videos_in_playlist(playlist_id: str) -> Dict[str, Any]:
         "videos": all_videos,
     }
 
+def crawl_info_from_keyword(keywords: List[str]) -> Dict[str, Any]:
+    try: 
+        if (len(keywords) != 0):
+            for keyword in keywords:
+                channel_result = crawl_channels_by_keyword(keyword);
+                if (channel_result["detailed_channels"]):
+                    playlist_ids = [c["playlistId"] for c in [{"playlistId": "UUeDzMj09oZVF_mz6RhcHWxA"}] if c.get("playlistId")]
+                    if (len(playlist_ids) != 0):
+                        for playlist_id in playlist_ids:
+                            video_result = crawl_videos_in_playlist(playlist_id)
+                            logger.info(f"Crawled {len(video_result["videos"])} from playlist id {playlist_id}")
+                    else:
+                       logger.info("Error processing crawl channel by keyword")
+                else:
+                    logger.info("Error processing crawl channel by keyword")
+        else:
+            logger.info("No keyword generated")
+
+    finally:
+        logger.info("Done crawl info from keyword")

@@ -8,5 +8,5 @@ services:
       # - MONGODB_URI=mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0
       # - MONGODB_DB=youtube_data
       - PYTHONPATH=/youtube-crawler
-    command: python src/main.py
+    command: python app.py
     restart: unless-stopped

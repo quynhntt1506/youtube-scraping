@@ -175,14 +175,17 @@ class YouTubeAPI:
 
     def get_channel_detail_by_ids(self, channel_ids: List[str]) -> Dict[str, Any]:
         """Get detailed information for multiple channels."""
-        print(channel_ids)
         detailed_channels = []
         quota_usage = {}
         all_responses = []
         
+        if not self.youtube:
+            self.logger.error("YouTube service is not available.")
+            return {"detailed_channels": [], "quota_usage": {}}
+        
         for i in range(0, len(channel_ids), MAX_ID_PAYLOAD):
             batch_ids = channel_ids[i:i+MAX_ID_PAYLOAD]
-            max_retries = len(self.api_keys)  # Try each API key once
+            max_retries = len(self.api_keys)
             retry_count = 0
             
             while retry_count < max_retries:
@@ -193,44 +196,35 @@ class YouTubeAPI:
                     )
                     
                     response = request.execute()
-                    print("RESPONSE", response.get("items", []))
                     all_responses.append(response)
                     
-                    # Track quota usage
                     quota_usage = self._track_quota(1, quota_usage)
                     
                     for item in response.get("items", []):
                         try:
                             channel_info = Channel.from_youtube_response(item)
-                            # Convert to dict and remove _id field if it's None
                             channel_dict = channel_info.model_dump(by_alias=True)
                             if channel_dict.get("_id") is None:
                                 channel_dict.pop("_id", None)
                             detailed_channels.append(channel_dict)
                         except Exception as e:
                             self.logger.error(f"Error processing channel {item.get('id')}: {e}")
-                            continue
                     
-                    # If successful, break the retry loop
                     break
                     
                 except googleapiclient.errors.HttpError as e:
-                    error_details = e.error_details[0]
-                    if error_details.get("reason") == "quotaExceeded":
-                        self.logger.warning(f"Quota exceeded for current API key, switching to next key...")
+                    if hasattr(e, 'error_details') and e.error_details[0].get("reason") == "quotaExceeded":
+                        self.logger.warning(f"Quota exceeded for current API key, switching...")
                         if not self._switch_api_key():
-                            self.logger.error("No more API keys available")
-                            # return {
-                            #     "detailed_channels": detailed_channels,
-                            #     "quota_usage": quota_usage
-                            # }
-                        retry_count += 1
-                        continue
+                            self.logger.error("No more API keys available.")
+                            # Exit retry loop if no keys are left
+                            retry_count = max_retries
+                        else:
+                            retry_count += 1
                     else:
                         self.logger.error(f"API Error getting channel details: {e}")
-                        break
+                        break # Exit retry loop on other API errors
                         
-        # print(quota_usage)
         return {
             "detailed_channels": detailed_channels,
             "quota_usage": quota_usage
