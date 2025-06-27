@@ -28,7 +28,6 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-
 def send_to_kafka(topic: str, message: dict, bootstrap_servers: str = KAFKA_BOOTSTRAP_SERVERS):
     """
     Gửi message (dạng dict/json) vào Kafka topic.
@@ -44,18 +43,27 @@ def send_to_kafka(topic: str, message: dict, bootstrap_servers: str = KAFKA_BOOT
     logger.info("Sent data crawled to kafka")
     producer.close()
 
+def update_quota_usage(quota_usage: Dict[str, int]) -> None:
+    api_manager = APIKeyManager()
+    total_quota = 0
+    for api_key, quota in quota_usage.items():
+        api_manager.update_quota(api_key, quota)
+        logger.info(f"Updated quota for API key {api_key}: {quota} units")
+        total_quota += quota
+    return total_quota
 
 def crawl_channels_by_keyword(keyword: str, max_results: int = MAX_CHANNELS) -> Dict[str, Any]:
     """Crawl channels by keyword."""
     api = YouTubeAPI()
-    db = Database()
     
     try:
         # Search channels
         search_result = api.search_channel_by_keyword(keyword, max_results=max_results)
         logger.info(f"Search keyword '{keyword}'")
         logger.info(f"Found {len(search_result['channels'])} channels")
+        search_quota = update_quota_usage(search_result["quota_usage"])
         # Get detailed channel information
+        logger.info(f"Total quota used to search: {search_quota}")
         channel_ids = [c["channelId"] for c in search_result["channels"]] 
         detailed_channels = []
         for i in range(0, len(channel_ids), MAX_ENTITY_IN_BATCH):
@@ -63,6 +71,8 @@ def crawl_channels_by_keyword(keyword: str, max_results: int = MAX_CHANNELS) -> 
             batch_channel_result = crawl_channel_by_id(batch_channel_ids)
             batch_detailed_channels = batch_channel_result["detailed_channels"]
             detailed_channels.extend(batch_detailed_channels)
+            # Update quota usage to db 
+    
         return {
             "detailed_channels": detailed_channels,
         }
@@ -77,6 +87,8 @@ def crawl_channel_by_id(channel_ids: List[str]) -> Dict[str, Any]:
     try:
         logger.info(f"Crawling channel {channel_ids}")
         channel_result = api.get_channel_detail_by_ids(channel_ids)
+        channel_quota = update_quota_usage(channel_result["quota_usage"])
+        logger.info(f"Total quota used to get channel detail by id: {channel_quota}")
         all_detaled_channels = [];
         # Save each channel's data to a separate JSON file
         if (channel_result["detailed_channels"]):
@@ -104,7 +116,8 @@ def crawl_channel_by_custom_urls(custom_urls: List[str]) -> Dict[str, Any]:
     try:
         logger.info(f"Crawling channel {custom_urls}")
         channel_result = api.get_channel_detail_by_custom_urls(custom_urls)
-
+        channel_quota = update_quota_usage(channel_result["quota_usage"])
+        logger.info(f"Total quota used to get channel detail by custom url: {channel_quota}")
         all_detaled_channels = [];
 
         # Save each channel's data to a separate JSON file
@@ -132,8 +145,8 @@ def crawl_video_by_ids(video_ids: List[str]) -> Dict[str, Any]:
 
     try:
         video_result = api.get_video_details(video_ids)
-        # image_result = download_video_thumbnails(video_result["detailed_videos"])
-
+        video_quota = update_quota_usage(video_result["quota_usage"])
+        logger.info(f"Total quota used to get video by id: {video_quota}")
         all_detailed_videos = [];
 
         # Save each video's data to a separate JSON file
@@ -159,37 +172,13 @@ def crawl_video_by_ids(video_ids: List[str]) -> Dict[str, Any]:
         # db.close()
         logger.info(f"Done crawl video by id")
 
-def crawl_video_by_urls(video_urls: List[str]) -> Dict[str, Any]:
-    """Crawl video by url."""
-    api = YouTubeAPI()
-    # db = Database()
-
-    for video_url in video_urls:
-        extract_url = api.extract_youtube_id(video_url)
-        video_ids = []
-        playlist_ids = []
-        
-        if extract_url["type"] in ["video", "shorts"]:
-            video_ids.append(extract_url["id"])
-        elif extract_url["type"] == "playlist":
-            playlist_ids.append(extract_url["id"])
-        else:
-            logger.error(f"Invalid video url: {video_url}")
-        
-        if video_ids:
-            result_crawl = crawl_video_by_ids(video_ids)
-            logger.info(f"Crawled {len(result_crawl['new_videos'])} videos from url_ids")
-        if playlist_ids:
-            for playlist_id in playlist_ids:
-                result_crawl = crawl_videos_in_playlist(playlist_id)
-                logger.info(f"Crawled {len(result_crawl.get('videos', []))} videos from playlist_ids")
-
-
 def crawl_videos_in_playlist(playlist_id: str) -> Dict[str, Any]:
     """Crawl videos from a playlist."""
     api = YouTubeAPI()
 
     playlist_result = api.get_all_videos_from_playlist(playlist_id)
+    playlist_quota = update_quota_usage(playlist_result["quota_usage"])
+    logger.info(f"Total quota used to get video in playlist: {playlist_quota}")
     videos = playlist_result["videos"]
     logger.info(f"Found {len(videos)} videos from playlist")
     
@@ -211,23 +200,38 @@ def crawl_videos_in_playlist(playlist_id: str) -> Dict[str, Any]:
         "videos": all_videos,
     }
 
-def crawl_info_from_keyword(keywords: List[str]) -> Dict[str, Any]:
+def crawl_info_from_keyword(keyword:str) -> Dict[str, Any]:
     try: 
-        if (len(keywords) != 0):
-            for keyword in keywords:
-                channel_result = crawl_channels_by_keyword(keyword);
-                if (channel_result["detailed_channels"]):
-                    playlist_ids = [c["playlistId"] for c in [{"playlistId": "UUeDzMj09oZVF_mz6RhcHWxA"}] if c.get("playlistId")]
-                    if (len(playlist_ids) != 0):
-                        for playlist_id in playlist_ids:
-                            video_result = crawl_videos_in_playlist(playlist_id)
-                            logger.info(f"Crawled {len(video_result["videos"])} from playlist id {playlist_id}")
-                    else:
-                       logger.info("Error processing crawl channel by keyword")
-                else:
-                    logger.info("Error processing crawl channel by keyword")
+        channel_result = crawl_channels_by_keyword(keyword);
+        if (channel_result["detailed_channels"]):
+            playlist_ids = [c["playlistId"] for c in [{"playlistId": "UUQBTfWwmrardq2rbCLssinw"}] if c.get("playlistId")]
+            if (len(playlist_ids) != 0):
+                for playlist_id in playlist_ids:
+                    video_result = crawl_videos_in_playlist(playlist_id)
+                    logger.info(f"Crawled {len(video_result['videos'])} from playlist id {playlist_id}")
+                
+                return {
+                    "success": True,
+                    "channels_count": len(channel_result["detailed_channels"]),
+                    "playlists_count": len(playlist_ids)
+                }
+            else:
+                logger.info("No playlist IDs found in channel results")
+                return {
+                    "success": False,
+                    "error": "No playlist IDs found"
+                }
         else:
-            logger.info("No keyword generated")
-
+            logger.info("Error processing crawl channel by keyword")
+            return {
+                "success": False,
+                "error": "No channels found"
+            }
+    except Exception as e:
+        logger.error(f"Error in crawl_info_from_keyword: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
     finally:
         logger.info("Done crawl info from keyword")

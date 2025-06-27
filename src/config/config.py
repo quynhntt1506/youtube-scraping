@@ -11,7 +11,6 @@ from pathlib import Path
 MONGODB_URI = 'mongodb://192.168.132.250:27011/?replicaSet=rs0'
 MONGODB_DB = 'youtube_data'
 
-
 SFTP_CONFIG = {
     "hostname": "192.168.132.250",
     "username": "htsc",
@@ -19,6 +18,13 @@ SFTP_CONFIG = {
     "remote_base_path": "/home/htsc/crawl-youtube/data-request/images"
 }
 
+POSTGRE_CONFIG = {
+    "username": "airflow",
+    "password": "airflow",
+    "host": "192.168.161.201",
+    "port": "5432",
+    "database": "youtube"
+}
 
 # Define base directories
 BASE_DIR = Path(__file__).parent.parent.parent
@@ -67,9 +73,6 @@ STATUS_ENTITY = {
     "crawled_video": "crawled_video",
     "crawled_comment": "crawled_comment"
 }
-
-
-
 # MongoDB Configuration
 MONGODB_COLLECTIONS = {
     "channels": "youtube_channels_local",
@@ -83,6 +86,7 @@ MONGODB_COLLECTIONS = {
 KAFKA_BOOTSTRAP_SERVERS = '192.168.161.201:9092'
 KAFKA_TOPIC_YOUTUBE_CHANNEL = ''
 
+# POS
 #API_KEYS
 API_KEYS = [
     {

@@ -1,14 +1,15 @@
 import random
 from typing import List, Dict
 from datetime import datetime
-from pymongo import MongoClient
-from src.config.config import MONGODB_URI, MONGODB_DB, STATUS_ENTITY
+from src.database.keyword_manager import KeywordManager
+from src.config.config import STATUS_ENTITY
 from src.utils.logger import CustomLogger
 
 class KeywordGenerator:
     def __init__(self):
         # Initialize logger
         self.logger = CustomLogger('keyword_generator')
+        self.keyword_manager = KeywordManager()
         
         # Base keywords related to faces
         self.face_keywords = [
@@ -95,6 +96,107 @@ class KeywordGenerator:
         ]
             
 
+    def generate_keywords(self, num_keywords: int = 100) -> List[str]:
+        """Generate a list of meaningful Vietnamese keywords related to human faces and content, and save to PostgreSQL.
+        
+        Args:
+            num_keywords (int): Number of keywords to generate
+            
+        Returns:
+            List[str]: List of generated keywords
+        """
+        self.logger.info(f"Starting keyword generation for {num_keywords} keywords (PostgreSQL)")
+        keywords = set()
+        max_attempts = num_keywords * 2
+        try:
+            # Lấy tất cả keyword đã có trong DB
+            existing_keywords = set()
+            all_db_keywords = self.keyword_manager.get_keywords()
+            for kw in all_db_keywords:
+                existing_keywords.add(kw["keyword"])
+            self.logger.info(f"Found {len(existing_keywords)} existing keywords in PostgreSQL")
+            attempts = 0
+            while len(keywords) < num_keywords and attempts < max_attempts:
+                attempts += 1
+                for pattern in self.sentence_patterns:
+                    if len(keywords) >= num_keywords:
+                        break
+                    keyword = pattern.format(
+                        demographic=random.choice(self.demographic_keywords),
+                        action=random.choice(self.action_verbs),
+                        content=random.choice(self.content_keywords),
+                        trend=random.choice(self.trend_keywords),
+                        setting=random.choice(self.setting_keywords),
+                        face=random.choice(self.face_keywords),
+                        quality=random.choice(self.quality_keywords)
+                    )
+                    if keyword not in existing_keywords:
+                        keywords.add(keyword)
+                        existing_keywords.add(keyword)
+                        self.logger.info(f"Generated new keyword: {keyword}")
+                # Các tổ hợp đơn giản
+                if len(keywords) < num_keywords:
+                    keyword = f"{random.choice(self.content_keywords)} {random.choice(self.demographic_keywords)}"
+                    if keyword not in existing_keywords:
+                        keywords.add(keyword)
+                        existing_keywords.add(keyword)
+                        self.logger.info(f"Generated new keyword: {keyword}")
+                if len(keywords) < num_keywords:
+                    keyword = f"{random.choice(self.trend_keywords)} {random.choice(self.content_keywords)}"
+                    if keyword not in existing_keywords:
+                        keywords.add(keyword)
+                        existing_keywords.add(keyword)
+                        self.logger.info(f"Generated new keyword: {keyword}")
+                if len(keywords) < num_keywords:
+                    keyword = f"{random.choice(self.demographic_keywords)} {random.choice(self.content_keywords)} {random.choice(self.trend_keywords)}"
+                    if keyword not in existing_keywords:
+                        keywords.add(keyword)
+                        existing_keywords.add(keyword)
+                        self.logger.info(f"Generated new keyword: {keyword}")
+                if len(keywords) < num_keywords:
+                    keyword = f"{random.choice(self.action_verbs)} {random.choice(self.content_keywords)}"
+                    if keyword not in existing_keywords:
+                        keywords.add(keyword)
+                        existing_keywords.add(keyword)
+                        self.logger.info(f"Generated new keyword: {keyword}")
+            # Lưu vào PostgreSQL
+            self._save_to_postgres(list(keywords))
+            keyword_list = list(keywords)[:num_keywords]
+            self.logger.info(f"Successfully generated {len(keyword_list)} keywords (PostgreSQL)")
+            return keyword_list
+        except Exception as e:
+            self.logger.error(f"Error during keyword generation: {str(e)}")
+            raise
+
+    def _save_to_postgres(self, keywords: List[str], status: str = None, type_: str = None) -> None:
+        """Save generated keywords to PostgreSQL.
+        
+        Args:
+            keywords (List[str]): List of keywords to save
+            status (str): Status for new keywords (default: STATUS_ENTITY["to_crawl"])
+            type_ (str): Type for new keywords (default: "auto_generated")
+        """
+        if status is None:
+            status = STATUS_ENTITY["to_crawl"]
+        if type_ is None:
+            type_ = "auto_generated"
+        for keyword in keywords:
+            self.keyword_manager.add_keyword(keyword, status, type_)
+
+    def get_keyword_stats(self) -> Dict[str, int]:
+        """Get statistics about available keywords in each category (PostgreSQL)."""
+        try:
+            stats = self.keyword_manager.get_keyword_stats()
+            self.logger.info(f"Keyword stats (PostgreSQL): {stats}")
+            return stats
+        except Exception as e:
+            self.logger.error(f"Error getting keyword stats: {str(e)}")
+            raise
+
+    def close(self):
+        self.keyword_manager.close()
+        self.logger.info("Closed PostgreSQL connection")
+
     def generate_keywords_stateless(self, num_keywords: int = 100) -> List[str]:
         """
         Generates a list of keywords without checking or saving to the database.
@@ -142,171 +244,4 @@ class KeywordGenerator:
             
         except Exception as e:
             self.logger.error(f"Error during stateless keyword generation: {e}", exc_info=True)
-            return []
-            
-
-    # The following methods are commented out as they interact with the database
-    # and are not needed for stateless generation.
-
-    # def generate_keywords(self, num_keywords: int = 100) -> List[str]:
-    #     """Generate a list of meaningful Vietnamese keywords related to human faces and content.
-        
-    #     Args:
-    #         num_keywords (int): Number of keywords to generate
-            
-    #     Returns:
-    #         List[str]: List of generated keywords
-    #     """
-    #     self.logger.info(f"Starting keyword generation for {num_keywords} keywords")
-    #     keywords = set()
-    #     max_attempts = num_keywords * 2  # Limit number of attempts to avoid infinite loop
-        
-    #     try:
-    #         # Get existing keywords from MongoDB
-    #         self.logger.info("Fetching existing keywords from MongoDB")
-    #         existing_keywords = set(doc["keyword"] for doc in self.collection.find({}, {"keyword": 1}))
-    #         self.logger.info(f"Found {len(existing_keywords)} existing keywords")
-            
-    #         # Generate combinations until we have enough unique keywords
-    #         attempts = 0
-    #         while len(keywords) < num_keywords and attempts < max_attempts:
-    #             attempts += 1
-                
-    #             # Generate using sentence patterns
-    #             for pattern in self.sentence_patterns:
-    #                 if len(keywords) >= num_keywords:
-    #                     break
-                        
-    #                 # Replace placeholders with random words
-    #                 keyword = pattern.format(
-    #                     demographic=random.choice(self.demographic_keywords),
-    #                     action=random.choice(self.action_verbs),
-    #                     content=random.choice(self.content_keywords),
-    #                     trend=random.choice(self.trend_keywords),
-    #                     setting=random.choice(self.setting_keywords),
-    #                     face=random.choice(self.face_keywords),
-    #                     quality=random.choice(self.quality_keywords)
-    #                 )
-                    
-    #                 # Only add if keyword doesn't exist in MongoDB
-    #                 if keyword not in existing_keywords:
-    #                     keywords.add(keyword)
-    #                     existing_keywords.add(keyword)
-    #                     self.logger.info(f"Generated new keyword: {keyword}")
-                
-    #             # Add some simple combinations
-    #             if len(keywords) < num_keywords:
-    #                 # Content + Demographic
-    #                 keyword = f"{random.choice(self.content_keywords)} {random.choice(self.demographic_keywords)}"
-    #                 if keyword not in existing_keywords:
-    #                     keywords.add(keyword)
-    #                     existing_keywords.add(keyword)
-    #                     self.logger.info(f"Generated new keyword: {keyword}")
-                    
-    #                 # Trend + Content
-    #                 keyword = f"{random.choice(self.trend_keywords)} {random.choice(self.content_keywords)}"
-    #                 if keyword not in existing_keywords:
-    #                     keywords.add(keyword)
-    #                     existing_keywords.add(keyword)
-    #                     self.logger.info(f"Generated new keyword: {keyword}")
-                    
-    #                 # Demographic + Content + Trend
-    #                 keyword = f"{random.choice(self.demographic_keywords)} {random.choice(self.content_keywords)} {random.choice(self.trend_keywords)}"
-    #                 if keyword not in existing_keywords:
-    #                     keywords.add(keyword)
-    #                     existing_keywords.add(keyword)
-    #                     self.logger.info(f"Generated new keyword: {keyword}")
-                    
-    #                 # Action + Content
-    #                 keyword = f"{random.choice(self.action_verbs)} {random.choice(self.content_keywords)}"
-    #                 if keyword not in existing_keywords:
-    #                     keywords.add(keyword)
-    #                     existing_keywords.add(keyword)
-    #                     self.logger.info(f"Generated new keyword: {keyword}")
-            
-    #         # Convert to list and limit to requested number
-    #         keyword_list = list(keywords)[:num_keywords]
-            
-    #         # Save to MongoDB
-    #         self._save_to_mongodb(keyword_list)
-            
-    #         self.logger.info(f"Successfully generated {len(keyword_list)} keywords")
-    #         return keyword_list
-            
-    #     except Exception as e:
-    #         self.logger.error(f"Error during keyword generation: {str(e)}")
-    #         raise
-
-    # def _save_to_mongodb(self, keywords: List[str]) -> None:
-    #     """Save generated keywords to MongoDB.
-        
-    #     Args:
-    #         keywords (List[str]): List of keywords to save
-    #     """
-    #     try:
-    #         current_time = datetime.now()
-            
-    #         # Prepare documents for bulk insert
-    #         documents = []
-    #         for keyword in keywords:
-    #             # Check if keyword already exists
-    #             existing = self.collection.find_one({"keyword": keyword})
-    #             if existing:
-    #                 # Update existing document
-    #                 self.collection.update_one(
-    #                     {"keyword": keyword},
-    #                     {
-    #                         "$set": {
-    #                             "lastUpdated": current_time
-    #                         }
-    #                     }
-    #                 )
-    #                 self.logger.info(f"Updated existing keyword: {keyword}")
-    #             else:
-    #                 # Create new document
-    #                 documents.append({
-    #                     "keyword": keyword,
-    #                     "status": STATUS_ENTITY["to_crawl"],
-    #                     "type": "auto_generated",
-    #                     "crawlCount": 0,
-    #                     "lastUpdated": current_time
-    #                 })
-            
-    #         # Bulk insert new keywords
-    #         if documents:
-    #             self.collection.insert_many(documents)
-    #             self.logger.info(f"Saved {len(documents)} new keywords to MongoDB")
-                
-    #     except Exception as e:
-    #         self.logger.error(f"Error saving keywords to MongoDB: {str(e)}")
-    #         raise
-
-    # def get_keyword_stats(self) -> Dict[str, int]:
-    #     """Get statistics about available keywords in each category.
-        
-    #     Returns:
-    #         Dict[str, int]: Dictionary with category names and counts
-    #     """
-    #     try:
-    #         stats = {
-    #             "face_keywords": len(self.face_keywords),
-    #             "content_keywords": len(self.content_keywords),
-    #             "trend_keywords": len(self.trend_keywords),
-    #             "demographic_keywords": len(self.demographic_keywords),
-    #             "expression_keywords": len(self.expression_keywords),
-    #             "setting_keywords": len(self.setting_keywords),
-    #             "quality_keywords": len(self.quality_keywords),
-    #             "action_verbs": len(self.action_verbs),
-    #             "sentence_patterns": len(self.sentence_patterns)
-    #         }
-    #         self.logger.info(f"Keyword stats: {stats}")
-    #         return stats
-    #     except Exception as e:
-    #         self.logger.error(f"Error getting keyword stats: {str(e)}")
-    #         raise
-        
-    # def close(self):
-    #     """Close MongoDB connection."""
-    #     if self.client:
-    #         self.client.close()
-    #         self.logger.info("Closed MongoDB connection") 
+            return [] 

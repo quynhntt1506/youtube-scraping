@@ -10,7 +10,6 @@ from pathlib import Path
 from src.models.channel import Channel
 from src.models.video import Video
 from src.models.comment import Comment
-from src.database.database import Database
 from src.database.api_key_manager import APIKeyManager
 from src.utils.common import convert_to_datetime
 from src.utils.logger import CustomLogger
@@ -24,8 +23,7 @@ from src.config.config import (
 class YouTubeAPI:
     def __init__(self):
         self.logger = CustomLogger("youtube_api")
-        self.db = Database()
-        self.api_manager = APIKeyManager(self.db)
+        self.api_manager = APIKeyManager()
         self.api_keys = self._load_api_keys()
         self.current_key_index = 0
         self.youtube = self._build_service()
@@ -36,9 +34,12 @@ class YouTubeAPI:
         """Load active API keys from database."""
         try:
             # Get all active API keys from database
-            # active_keys = self.api_manager.get_active_api_keys()
-            active_keys = API_KEYS
-            return [key["apiKey"] for key in active_keys]
+            active_keys = self.api_manager.get_active_api_keys()
+            if active_keys:
+                return [key["api_key"] for key in active_keys]
+            else:
+                # Fallback to config if no keys in database
+                return []
         except Exception as e:
             self.logger.error(f"Error loading API keys from database: {e}")
             return []
@@ -57,24 +58,41 @@ class YouTubeAPI:
 
     def _switch_api_key(self) -> bool:
         """Switch to next API key if available."""
+        # Track how many times we've tried switching
+        if not hasattr(self, '_switch_attempts'):
+            self._switch_attempts = 0
+        
+        # If we've tried switching too many times, stop
+        if self._switch_attempts >= len(self.api_keys) * 2:  # Allow 2 rounds through all keys
+            self.logger.error("All API keys have been tried. Stopping to avoid infinite loop.")
+            return False
+        
+        self._switch_attempts += 1
+        
         # Mark current API key as unactive if quota is 0
-        # if self.current_key_index < len(self.api_keys):
-        #     current_api_key = self.api_keys[self.current_key_index]
-        #     api_key_doc = self.api_manager.get_api_key_stats(current_api_key)
-        #     if api_key_doc and api_key_doc["remainingQuota"] <= 0:
-        #         self.api_manager.update_quota(current_api_key, 0)  # This will set status to unactive
+        if self.current_key_index < len(self.api_keys):
+            current_api_key = self.api_keys[self.current_key_index]
+            api_key_doc = self.api_manager.get_api_key_stats(current_api_key)
+            if api_key_doc and api_key_doc["remaining_quota"] <= 0:
+                self.api_manager.deactivate_key(current_api_key)
 
         # Try to get next active API key
         self.current_key_index += 1
+        
+        # If we've tried all keys, reload from database and start over
         if self.current_key_index >= len(self.api_keys):
             # Reload active API keys from database
             self.api_keys = self._load_api_keys()
             self.current_key_index = 0
+            
+            # If still no keys available, we're out of keys
             if not self.api_keys:
                 self.logger.error("No more active API keys available.")
                 return False
 
+        # Build service with new key
         self.youtube = self._build_service()
+            
         return self.youtube is not None
 
     def _track_quota(self, quota: int, quota_usage: Dict[str, int]) -> Dict[str, int]:
@@ -95,6 +113,16 @@ class YouTubeAPI:
                 quota_usage[current_api_key] = quota
         return quota_usage
 
+    def _update_quota_usage(self, quota: int):
+        """Update quota usage in database for current API key."""
+        if self.current_key_index < len(self.api_keys):
+            current_api_key = self.api_keys[self.current_key_index]
+            self.api_manager.update_quota(current_api_key, quota)
+
+    def _reset_switch_attempts(self):
+        """Reset the switch attempts counter."""
+        self._switch_attempts = 0
+
     def search_channel_by_keyword(self, query: str, max_results: int = 100) -> dict:
         """Search for channels and videos."""
         channels = []
@@ -103,6 +131,9 @@ class YouTubeAPI:
         all_responses = []
         used_api_key = None
         quota_usage = {}
+
+        # Reset switch attempts for this operation
+        self._reset_switch_attempts()
 
         # Ensure youtube service is initialized
         if not self.youtube:
@@ -129,8 +160,9 @@ class YouTubeAPI:
                 response = request.execute()
                 all_responses.append(response)
                 
-                # Track quota usage
+                # Track quota usage and update database
                 quota_usage = self._track_quota(100, quota_usage)
+                # self._update_quota_usage(100)
 
                 for item in response.get("items", []):
                     if item["id"]["kind"] == "youtube#channel":
@@ -152,7 +184,20 @@ class YouTubeAPI:
                 if error_details.get("reason") == "quotaExceeded":
                     self.logger.warning(f"API key quota exceeded. Switching to next key...")
                     if not self._switch_api_key():
-                        self.logger.error("No more API keys available. Stopping search.")
+                        self.logger.error("No more API keys available. Stopping search due to quotaExceeded.")
+                        break
+                    # Update used_api_key after switching
+                    if self.current_key_index < len(self.api_keys):
+                        used_api_key = self.api_keys[self.current_key_index]
+                    continue
+                elif error_details.get("reason") == "forbidden":
+                    self.logger.warning(f"API key forbidden. Suspending key and switching to next key...")
+                    # Suspend the current key
+                    if self.current_key_index < len(self.api_keys):
+                        current_api_key = self.api_keys[self.current_key_index]
+                        self.api_manager.deactivate_key(current_api_key)
+                    if not self._switch_api_key():
+                        self.logger.error("No more API keys available. Stopping search due to forbidden.")
                         break
                     # Update used_api_key after switching
                     if self.current_key_index < len(self.api_keys):
@@ -179,51 +224,72 @@ class YouTubeAPI:
         quota_usage = {}
         all_responses = []
         
+        # Reset switch attempts for this operation
+        self._reset_switch_attempts()
+        
         if not self.youtube:
             self.logger.error("YouTube service is not available.")
             return {"detailed_channels": [], "quota_usage": {}}
         
         for i in range(0, len(channel_ids), MAX_ID_PAYLOAD):
             batch_ids = channel_ids[i:i+MAX_ID_PAYLOAD]
-            max_retries = len(self.api_keys)
-            retry_count = 0
-            
-            while retry_count < max_retries:
-                try:
-                    request = self.youtube.channels().list(
-                        part="snippet,statistics,topicDetails,brandingSettings,contentDetails",
-                        id=",".join(batch_ids)
-                    )
-                    
-                    response = request.execute()
-                    all_responses.append(response)
-                    
-                    quota_usage = self._track_quota(1, quota_usage)
-                    
-                    for item in response.get("items", []):
-                        try:
-                            channel_info = Channel.from_youtube_response(item)
-                            channel_dict = channel_info.model_dump(by_alias=True)
-                            if channel_dict.get("_id") is None:
-                                channel_dict.pop("_id", None)
-                            detailed_channels.append(channel_dict)
-                        except Exception as e:
-                            self.logger.error(f"Error processing channel {item.get('id')}: {e}")
-                    
-                    break
-                    
-                except googleapiclient.errors.HttpError as e:
-                    if hasattr(e, 'error_details') and e.error_details[0].get("reason") == "quotaExceeded":
-                        self.logger.warning(f"Quota exceeded for current API key, switching...")
-                        if not self._switch_api_key():
-                            self.logger.error("No more API keys available.")
-                            # Exit retry loop if no keys are left
-                            retry_count = max_retries
-                        else:
-                            retry_count += 1
-                    else:
-                        self.logger.error(f"API Error getting channel details: {e}")
-                        break # Exit retry loop on other API errors
+            try:
+                request = self.youtube.channels().list(
+                    part="snippet,statistics,topicDetails,brandingSettings,contentDetails",
+                    id=",".join(batch_ids)
+                )
+                response = request.execute()
+                all_responses.append(response)
+                
+                # Track quota usage and update database
+                quota_usage = self._track_quota(1, quota_usage)
+                # self._update_quota_usage(1)
+                
+                for item in response.get("items", []):
+                    try:
+                        channel_info = Channel.from_youtube_response(item)
+                        channel_dict = channel_info.model_dump(by_alias=True)
+                        if channel_dict.get("_id") is None:
+                            channel_dict.pop("_id", None)
+                        detailed_channels.append(channel_dict)
+                    except Exception as e:
+                        self.logger.error(f"Error processing channel {item.get('id')}: {e}")
+                
+            except googleapiclient.errors.HttpError as e:
+                error_details = e.error_details[0]
+                if error_details.get("reason") == "quotaExceeded":
+                    self.logger.warning(f"API key quota exceeded. Switching to next key...")
+                    if not self._switch_api_key():
+                        self.logger.error("No more API keys available. Stopping channel detail retrieval due to quotaExceeded.")
+                        return {
+                            "detailed_channels": detailed_channels,
+                            "quota_usage": quota_usage,
+                            "error": "All API keys quota exceeded"
+                        }
+                    # Update used_api_key after switching
+                    if self.current_key_index < len(self.api_keys):
+                        used_api_key = self.api_keys[self.current_key_index]
+                    continue
+                elif error_details.get("reason") == "forbidden":
+                    self.logger.warning(f"API key forbidden. Suspending key and switching to next key...")
+                    # Suspend the current key
+                    if self.current_key_index < len(self.api_keys):
+                        current_api_key = self.api_keys[self.current_key_index]
+                        self.api_manager.deactivate_key(current_api_key)
+                    if not self._switch_api_key():
+                        self.logger.error("No more API keys available. Stopping channel detail retrieval due to forbidden.")
+                        return {
+                            "detailed_channels": detailed_channels,
+                            "quota_usage": quota_usage,
+                            "error": "All API keys forbidden"
+                        }
+                    # Update used_api_key after switching
+                    if self.current_key_index < len(self.api_keys):
+                        used_api_key = self.api_keys[self.current_key_index]
+                    continue
+                else:
+                    self.logger.error(f"API Error: {e}")
+                    continue
                         
         return {
             "detailed_channels": detailed_channels,
@@ -276,6 +342,8 @@ class YouTubeAPI:
                 part="snippet,statistics,topicDetails,brandingSettings,contentDetails",
                 forHandle=handle,  # Use handle without @ symbol
             )
+            quota_usage = self._track_quota(1, quota_usage)
+            # self._update_quota_usage(1)
             batch.add(request, callback=self._batch_callback)
             
         # Execute batch request
@@ -362,7 +430,7 @@ class YouTubeAPI:
 
     def close(self):
         """Close database connection."""
-        self.db.close()
+        self.api_manager.close()
 
     def get_all_videos_from_playlist(self, playlist_id: str) -> Dict[str, Any]:
         """Get all videos from a playlist."""
@@ -386,6 +454,7 @@ class YouTubeAPI:
                     
                     # Track quota usage
                     quota_usage = self._track_quota(1, quota_usage)
+                    # self._update_quota_usage(1)
 
                     for item in response.get("items", []):
                         video_info = Video.from_youtube_response_playlist(item, playlist_id)
@@ -454,8 +523,9 @@ class YouTubeAPI:
                         response = request.execute()
                         all_responses.append(response)
                         
-                        # Track quota usage
+                        # Track quota usage and update database
                         quota_usage = self._track_quota(1, quota_usage)
+                        # self._update_quota_usage(1)
 
                         for item in response.get("items", []):
                             video_info = Video.from_youtube_response_playlist(item, playlist_id)
@@ -505,6 +575,9 @@ class YouTubeAPI:
         all_responses = []
         crawled_video_ids = []
         
+        # Reset switch attempts for this operation
+        self._reset_switch_attempts()
+        
         for i in range(0, len(video_ids), MAX_ID_PAYLOAD):
             batch_ids = video_ids[i:i+MAX_ID_PAYLOAD]
             try:
@@ -519,8 +592,9 @@ class YouTubeAPI:
                 response = request.execute()
                 all_responses.append(response)
                 
-                # Track quota usage
+                # Track quota usage and update database
                 quota_usage = self._track_quota(1, quota_usage)
+                # self._update_quota_usage(1)
                     
                 for item in response.get("items", []):
                     video_info = Video.from_youtube_response_detail(item)
@@ -535,12 +609,32 @@ class YouTubeAPI:
                 if error_details.get("reason") == "quotaExceeded":
                     self.logger.warning(f"Quota exceeded for current API key, switching to next key...")
                     if not self._switch_api_key():
-                        self.logger.error("No more API keys available")
-                    retry_count += 1
+                        self.logger.error("No more API keys available. Stopping video detail retrieval due to quotaExceeded.")
+                        return {
+                            "crawled_video_ids": crawled_video_ids,
+                            "detailed_videos": detailed_videos,
+                            "quota_usage": quota_usage,
+                            "error": "All API keys quota exceeded"
+                        }
+                    continue
+                elif error_details.get("reason") == "forbidden":
+                    self.logger.warning(f"API key forbidden. Suspending key and switching to next key...")
+                    # Suspend the current key
+                    if self.current_key_index < len(self.api_keys):
+                        current_api_key = self.api_keys[self.current_key_index]
+                        self.api_manager.deactivate_key(current_api_key)
+                    if not self._switch_api_key():
+                        self.logger.error("No more API keys available. Stopping video detail retrieval due to forbidden.")
+                        return {
+                            "crawled_video_ids": crawled_video_ids,
+                            "detailed_videos": detailed_videos,
+                            "quota_usage": quota_usage,
+                            "error": "All API keys forbidden"
+                        }
                     continue
                 else:
-                    self.logger.error(f"API Error getting channel details: {e}")
-                    break
+                    self.logger.error(f"API Error getting video details for batch {batch_ids}: {e}")
+                    continue  # Skip this batch and continue with next batch
         # if all_responses:
         #     self.save_crawl_result_videos(all_responses, "video")
             
@@ -578,8 +672,9 @@ class YouTubeAPI:
                     response = request.execute()
                     all_responses.append(response)
                     
-                    # Track quota usage
+                    # Track quota usage and update database
                     quota_usage = self._track_quota(1, quota_usage)
+                    # self._update_quota_usage(1)
                     
                     for item in response.get("items", []):
                         try:

@@ -76,7 +76,7 @@ def crawl_channels_by_keyword(keyword: str, max_results: int = MAX_CHANNELS) -> 
         return {
             "new_channels": new_channel_ids,
             "detailed_channels": detailed_channels,
-            "quota_used": search_quota + total_channel_quota
+            "quota_usage": search_quota + total_channel_quota
         }
         
     finally:
@@ -145,7 +145,7 @@ def crawl_videos_from_channels(channels: List[dict]) -> Dict[str, Any]:
         return {
             "new_videos": all_video_ids,
             "videos": all_videos,
-            "quota_used": quota_usage
+            "quota_usage": quota_usage
         }
         
     finally:
