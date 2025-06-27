@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Add parent directory to path to import utils
 sys.path.append(str(Path(__file__).parent.parent))
-from src.database.database import Database
+from src.database.api_key_manager import APIKeyManager
 from src.utils.logger import CustomLogger
 
 # Initialize logger
@@ -39,27 +39,30 @@ def get_next_reset_time():
     return next_reset
 
 def reset_quota():
-    """Reset quota of all API keys to 10000 at 14:30 local time daily."""
+    """Reset quota of all API keys to 10000 at 7:00 local time daily."""
     try:
-        db = Database()
+        api_manager = APIKeyManager()
         current_time = datetime.now()
         
         logger.info(f"Starting quota reset at {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
         
-        # Update all API keys' remaining_quota to 10000
-        result = db.collections["api_keys"].update_many(
-            {},
-            {
-                "$set": {
-                    "remainingQuota": 10000,
-                    "status": "active",
-                    "lastUpdated": current_time,
-                }
-            }
-        )
+        # Get all API keys
+        all_keys = api_manager.get_all_keys()
+        reset_count = 0
+        
+        # Reset quota for each API key
+        for key in all_keys:
+            api_key = key.get("api_key")
+            if api_key:
+                success = api_manager.reset_quota(api_key, 10000)
+                if success:
+                    reset_count += 1
+                    logger.info(f"Reset quota for API key: {api_key[:20]}...")
+                else:
+                    logger.warning(f"Failed to reset quota for API key: {api_key[:20]}...")
         
         logger.info(f"Reset quota completed at {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"Updated {result.modified_count} API keys")
+        logger.info(f"Updated {reset_count} API keys")
         
         # Schedule next reset
         next_reset = get_next_reset_time()
@@ -70,7 +73,7 @@ def reset_quota():
     except Exception as e:
         logger.error(f"Error resetting quota: {str(e)}")
     finally:
-        db.close()
+        api_manager.close()
 
 def main():
     # Calculate initial reset time
